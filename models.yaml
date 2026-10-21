@@ -1,0 +1,18 @@
+# Picks the provider and model for each job. Keys come from environment variables, never from this file.
+# Providers: openai, anthropic, ollama, local (reranker only), llm (reranker using the chat model)
+chat:
+  provider: openai
+  model: gpt-5-mini
+embed:
+  provider: openai
+  model: text-embedding-3-small
+  dims: 1536
+rerank:
+  provider: llm
+vision:
+  provider: openai
+  model: gpt-5-mini
+egress:
+  # false refuses to start any adapter whose base URL is not a private address.
+  allow_cloud: true
+  log_payloads: false
