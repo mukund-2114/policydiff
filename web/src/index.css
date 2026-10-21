@@ -1,0 +1,63 @@
+@import "tailwindcss";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+
+/* Flat colours, one accent. Red, amber, grey and green are reserved for finding status. */
+:root {
+  --bg: #f7f8fa;
+  --surface: #ffffff;
+  --border: #d5d9e0;
+  --text: #1a1f29;
+  --muted: #5b6472;
+  --accent: #1f4e9c;
+  --accent-text: #ffffff;
+  --danger: #b42318;
+  --ok: #1a7f4b;
+  --warn: #9a6700;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12151b;
+    --surface: #1a1e26;
+    --border: #2f3541;
+    --text: #e8ebf0;
+    --muted: #9aa3b2;
+    --accent: #6a9bea;
+    --accent-text: #0d1117;
+    --danger: #f08277;
+    --ok: #4cc38a;
+    --warn: #e3b341;
+  }
+}
+
+@theme inline {
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-text: var(--accent-text);
+  --color-danger: var(--danger);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --radius-ctl: 5px;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

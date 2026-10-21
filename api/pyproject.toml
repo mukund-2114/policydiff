@@ -1,0 +1,32 @@
+[project]
+name = "policydiff-api"
+version = "0.1.0"
+description = "Policy Diff API"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic",
+    "pydantic-settings",
+    "sqlalchemy",
+    "alembic",
+    "psycopg[binary]",
+    "pgvector",
+    "uuid-utils",
+    "argon2-cffi",
+    "itsdangerous",
+    "pyyaml",
+    "httpx",
+    "openai",
+    "anthropic",
+]
+
+[dependency-groups]
+dev = ["pytest", "ruff"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
