@@ -51,10 +51,10 @@ export function SampleViewer({ id }: { id: string }) {
         </span>
       </div>
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <article className={`${panel} h-[calc(100vh-8rem)] overflow-y-auto p-6`}>
+        <article className={`${panel} h-[70vh] md:h-[calc(100vh-5rem)] overflow-y-auto p-6`}>
           <PolicyView markdown={p.markdown} marks={[]} />
         </article>
-        <aside className="h-[calc(100vh-8rem)] space-y-4 overflow-y-auto">
+        <aside className="h-[70vh] md:h-[calc(100vh-5rem)] space-y-4 overflow-y-auto">
           <Related title="Planted conflicts" items={key.data?.conflicts.filter(involves) ?? []} doc={id} />
           <Related title="Near misses" items={key.data?.near_misses.filter(involves) ?? []} doc={id} />
         </aside>

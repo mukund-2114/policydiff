@@ -160,9 +160,9 @@ export function DocumentDetail({ id }: { id: string }) {
         <iframe
           title={d.title}
           src={api.fileUrl(d.id)}
-          className="h-[calc(100vh-9rem)] w-full rounded-ctl border border-border bg-surface"
+          className="h-[70vh] md:h-[calc(100vh-6rem)] w-full rounded-ctl border border-border bg-surface"
         />
-        <div className="h-[calc(100vh-9rem)] overflow-y-auto">
+        <div className="h-[70vh] md:h-[calc(100vh-6rem)] overflow-y-auto">
           <div className="mb-3 flex border-b border-border">
             <button className={tabClass("pipeline")} onClick={() => setTab("pipeline")}>
               Pipeline

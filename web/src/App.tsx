@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError, api, type User } from "./api";
+import { Nav, BrandMark } from "./components/Nav";
 import { AnswerKey } from "./pages/AnswerKey";
 import { Compare } from "./pages/Compare";
 import { DocumentDetail } from "./pages/DocumentDetail";
@@ -10,7 +11,7 @@ import { SampleViewer } from "./pages/SampleViewer";
 import { Samples } from "./pages/Samples";
 import { Status } from "./pages/Status";
 import { useRoute } from "./router";
-import { button, field, primary } from "./ui";
+import { field, primary } from "./ui";
 
 const PRODUCT_NAME = "Policy Diff";
 
@@ -25,9 +26,15 @@ function Login() {
 
   return (
     <main className="mx-auto mt-24 w-full max-w-sm px-4">
-      <h1 className="mb-6 text-xl font-semibold">{PRODUCT_NAME}</h1>
+      <div className="mb-6 flex items-center gap-3">
+        <BrandMark size={36} />
+        <div>
+          <h1 className="text-xl font-semibold leading-tight">{PRODUCT_NAME}</h1>
+          <p className="text-muted">Find conflicts between your policies.</p>
+        </div>
+      </div>
       <form
-        className="space-y-4 rounded-ctl border border-border bg-surface p-5"
+        className="space-y-4 rounded-ctl border border-border bg-surface p-6"
         onSubmit={(e) => {
           e.preventDefault();
           login.mutate();
@@ -78,42 +85,16 @@ function Shell({ user }: { user: User }) {
     onSuccess: () => qc.setQueryData(["me"], null),
   });
 
-  const links = [
-    ["documents", "Documents"],
-    ["compare", "Compare"],
-    ...(samples.data
-      ? [
-          ["samples", "Sample policies"],
-          ["answer-key", "Answer key"],
-        ]
-      : []),
-    ["status", "Status"],
-  ];
-
   return (
-    <div>
-      <header className="flex h-12 items-center gap-6 border-b border-border bg-surface px-4">
-        <span className="font-semibold">{PRODUCT_NAME}</span>
-        <nav className="flex h-full gap-4">
-          {links.map(([key, label]) => (
-            <a
-              key={key}
-              href={`#/${key}`}
-              className={`flex items-center border-b-2 px-1 ${
-                (page === key || (key === "samples" && page === "sample-compare")) ? "border-accent font-medium text-text" : "border-transparent text-muted hover:text-text"
-              }`}
-            >
-              {label}
-            </a>
-          ))}
-        </nav>
-        <span className="ml-auto flex items-center gap-3">
-          <span className="text-muted">{user.email}</span>
-          <button className={button} onClick={() => logout.mutate()}>
-            Sign out
-          </button>
-        </span>
-      </header>
+    <div className="flex min-h-screen flex-col md:flex-row">
+      <Nav
+        productName={PRODUCT_NAME}
+        user={user}
+        page={page}
+        showSamples={Boolean(samples.data)}
+        onSignOut={() => logout.mutate()}
+      />
+      <div className="min-w-0 flex-1">
       {page === "documents" && path[1] ? (
         <DocumentDetail id={path[1]} />
       ) : page === "samples" && path[1] ? (
@@ -131,6 +112,7 @@ function Shell({ user }: { user: User }) {
       ) : (
         <Documents user={user} />
       )}
+      </div>
     </div>
   );
 }

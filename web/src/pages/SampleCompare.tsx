@@ -70,7 +70,7 @@ export function SampleCompare() {
   );
 
   return (
-    <div className="flex h-[calc(100vh-3rem)] flex-col gap-3 px-4 py-4">
+    <div className="flex min-h-[32rem] md:h-screen flex-col gap-3 px-4 py-4">
       {item && (
         <div className={`${panel} flex flex-wrap items-baseline gap-x-4 px-4 py-2`}>
           <span className="font-mono font-medium">{item.id}</span>

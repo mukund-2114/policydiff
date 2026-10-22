@@ -34,7 +34,7 @@ export function Compare() {
     );
 
   return (
-    <div className="flex h-[calc(100vh-3rem)] flex-col gap-3 px-4 py-4">
+    <div className="flex min-h-[32rem] md:h-screen flex-col gap-3 px-4 py-4">
       <div className="flex flex-wrap items-center gap-3">
         {picker("Left", a, (v) => go(compareHref(v, b)))}
         <button className={button} onClick={() => go(compareHref(b, a))}>
