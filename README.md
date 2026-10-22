@@ -2,7 +2,7 @@
 
 Finds places where a company's policies contradict each other. Self-hosted: documents, vectors and findings stay in your own Postgres. Model calls use your own API key.
 
-Status: Phase 1 (foundation). Login, health check and database are in place. Upload and scanning come in later phases.
+Status: Phase 2 (ingestion) in progress. Login, upload, background parsing, and pages to read and compare documents work. Chunking, search and conflict scanning come in later phases.
 
 ## Run it
 
@@ -17,6 +17,18 @@ docker compose --env-file ../.env up -d --build
 Open http://127.0.0.1:8080 and sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD` from `.env`.
 
 Check status: http://127.0.0.1:8080/api/health (add `?deep=true` to make one small call to your model provider).
+
+## What you can do in the app
+
+| Page | What it does |
+| --- | --- |
+| Documents | Upload a PDF, watch it move through the pipeline, tick two to compare |
+| Document view | The PDF next to its pipeline stages and what the parser saw (font sizes, tables, images) |
+| Compare | Two uploaded PDFs side by side |
+| Sample policies | The 15 made-up Northwind Air policies, rendered from Markdown |
+| Answer key | The 25 planted conflicts. Compare opens both policies with the planted sentences marked |
+
+The sample pages read `evals/northwind` directly. They need no upload and no API key.
 
 ## Choose a model provider
 
@@ -33,9 +45,9 @@ If you change the embedding model, set `embed.dims` and `EMBED_DIMS` to match, a
 ## Layout
 
 ```
-api/      FastAPI app, database models, Alembic migrations, model adapters
+api/      FastAPI app, database models, Alembic migrations, model adapters, pipeline stages
 web/      React front end (served by Caddy, which also proxies /api)
-worker/   Background jobs (Phase 2)
+worker/   Reserved. The worker runs from the api image (see deploy/docker-compose.yml)
 evals/    Test corpus and accuracy measurements (Phase 1 to 4)
 deploy/   docker-compose.yml
 ```

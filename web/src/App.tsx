@@ -1,15 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ApiError, api } from "./api";
+import { ApiError, api, type User } from "./api";
+import { AnswerKey } from "./pages/AnswerKey";
+import { Compare } from "./pages/Compare";
+import { DocumentDetail } from "./pages/DocumentDetail";
+import { Documents } from "./pages/Documents";
+import { SampleCompare } from "./pages/SampleCompare";
+import { SampleViewer } from "./pages/SampleViewer";
+import { Samples } from "./pages/Samples";
+import { Status } from "./pages/Status";
+import { useRoute } from "./router";
+import { button, field, primary } from "./ui";
 
 const PRODUCT_NAME = "Policy Diff";
-
-const field =
-  "h-9 w-full rounded-ctl border border-border bg-surface px-3 text-text placeholder:text-muted";
-const button =
-  "h-9 rounded-ctl border border-border bg-surface px-3 font-medium text-text hover:bg-bg";
-const primary =
-  "h-9 rounded-ctl bg-accent px-4 font-medium text-accent-text hover:opacity-90 disabled:opacity-50";
 
 function Login() {
   const qc = useQueryClient();
@@ -65,51 +68,69 @@ function Login() {
   );
 }
 
-function Home({ email }: { email: string }) {
+function Shell({ user }: { user: User }) {
   const qc = useQueryClient();
-  const health = useQuery({ queryKey: ["health"], queryFn: api.health });
+  const { path } = useRoute();
+  const page = path[0] ?? "documents";
+  const samples = useQuery({ queryKey: ["samples"], queryFn: api.samplesAvailable });
   const logout = useMutation({
     mutationFn: api.logout,
     onSuccess: () => qc.setQueryData(["me"], null),
   });
-  const h = health.data;
+
+  const links = [
+    ["documents", "Documents"],
+    ["compare", "Compare"],
+    ...(samples.data
+      ? [
+          ["samples", "Sample policies"],
+          ["answer-key", "Answer key"],
+        ]
+      : []),
+    ["status", "Status"],
+  ];
 
   return (
     <div>
-      <header className="flex h-12 items-center justify-between border-b border-border bg-surface px-4">
+      <header className="flex h-12 items-center gap-6 border-b border-border bg-surface px-4">
         <span className="font-semibold">{PRODUCT_NAME}</span>
-        <span className="flex items-center gap-3">
-          <span className="text-muted">{email}</span>
+        <nav className="flex h-full gap-4">
+          {links.map(([key, label]) => (
+            <a
+              key={key}
+              href={`#/${key}`}
+              className={`flex items-center border-b-2 px-1 ${
+                (page === key || (key === "samples" && page === "sample-compare")) ? "border-accent font-medium text-text" : "border-transparent text-muted hover:text-text"
+              }`}
+            >
+              {label}
+            </a>
+          ))}
+        </nav>
+        <span className="ml-auto flex items-center gap-3">
+          <span className="text-muted">{user.email}</span>
           <button className={button} onClick={() => logout.mutate()}>
             Sign out
           </button>
         </span>
       </header>
-      <main className="mx-auto max-w-3xl space-y-6 px-4 py-8">
-        <section>
-          <h2 className="mb-2 font-semibold">Review queue</h2>
-          <p className="text-muted">No findings yet. Upload documents to start a scan.</p>
-        </section>
-        <section>
-          <h2 className="mb-2 font-semibold">System status</h2>
-          <dl className="grid grid-cols-[8rem_1fr] gap-y-1 rounded-ctl border border-border bg-surface p-4">
-            <dt className="text-muted">Overall</dt>
-            <dd className="font-mono">{h?.status ?? "checking"}</dd>
-            <dt className="text-muted">Database</dt>
-            <dd className="font-mono">{h?.db ?? "checking"}</dd>
-            <dt className="text-muted">Chat model</dt>
-            <dd className="font-mono">{h?.models.chat ?? "not configured"}</dd>
-            <dt className="text-muted">Embeddings</dt>
-            <dd className="font-mono">{h?.models.embed ?? "not configured"}</dd>
-            {h?.models.error && (
-              <>
-                <dt className="text-muted">Model issue</dt>
-                <dd className="text-warn">{h.models.error}</dd>
-              </>
-            )}
-          </dl>
-        </section>
-      </main>
+      {page === "documents" && path[1] ? (
+        <DocumentDetail id={path[1]} />
+      ) : page === "samples" && path[1] ? (
+        <SampleViewer id={path[1]} />
+      ) : page === "samples" ? (
+        <Samples />
+      ) : page === "sample-compare" ? (
+        <SampleCompare />
+      ) : page === "compare" ? (
+        <Compare />
+      ) : page === "answer-key" ? (
+        <AnswerKey />
+      ) : page === "status" ? (
+        <Status />
+      ) : (
+        <Documents user={user} />
+      )}
     </div>
   );
 }
@@ -124,5 +145,5 @@ export function App() {
       }),
   });
   if (me.isPending) return null;
-  return me.data ? <Home email={me.data.email} /> : <Login />;
+  return me.data ? <Shell user={me.data} /> : <Login />;
 }
