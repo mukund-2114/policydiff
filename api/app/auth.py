@@ -36,9 +36,7 @@ def make_session_token(user_id: uuid.UUID) -> str:
 
 def read_session_token(token: str) -> uuid.UUID | None:
     try:
-        return uuid.UUID(
-            _serializer().loads(token, max_age=get_settings().session_max_age_seconds)
-        )
+        return uuid.UUID(_serializer().loads(token, max_age=get_settings().session_max_age_seconds))
     except (BadSignature, ValueError):
         return None
 

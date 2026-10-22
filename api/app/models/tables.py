@@ -89,12 +89,14 @@ class DocumentVersion(Base):
     failed_stage: Mapped[str | None] = mapped_column(String(20))
     file_path: Mapped[str | None] = mapped_column(Text)
     sha256: Mapped[str | None] = mapped_column(String(64), index=True)
-    parsed_json_path: Mapped[str | None] = mapped_column(Text)  # raw parser output, saved so we can re-chunk without re-parsing
+    parsed_json_path: Mapped[str | None] = mapped_column(
+        Text
+    )  # raw parser output, saved so we can re-chunk without re-parsing
     created_at: Mapped[datetime] = _now()
 
 
 class VersionStage(Base):
-    """One row per pipeline stage run on a document version. The UI draws the pipeline from these."""
+    """One row per pipeline stage run on a document version. The UI draws the pipeline from it."""
 
     __tablename__ = "version_stage"
     id: Mapped[uuid.UUID] = _pk()
@@ -173,7 +175,9 @@ class Finding(Base):
     quote_b: Mapped[str] = mapped_column(Text)
     explanation: Mapped[str] = mapped_column(Text)
     confidence: Mapped[float] = mapped_column(Float)
-    status: Mapped[str] = mapped_column(String(20), default="open")  # open, confirmed, dismissed, resolved
+    status: Mapped[str] = mapped_column(
+        String(20), default="open"
+    )  # open, confirmed, dismissed, resolved
     owner: Mapped[str | None] = mapped_column(String(200))
     resolution_note: Mapped[str | None] = mapped_column(Text)
 

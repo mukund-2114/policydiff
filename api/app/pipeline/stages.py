@@ -1,4 +1,4 @@
-"""Records each pipeline stage in the database so the UI can show what happened and how long it took.
+"""Records each pipeline stage in the database so the UI can show what happened and its timing.
 
 Usage in a job:
 
@@ -12,7 +12,7 @@ logged and swallowed, so the job itself finishes and is not retried into duplica
 
 import logging
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 @contextmanager

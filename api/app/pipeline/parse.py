@@ -16,7 +16,8 @@ def parse_pdf(path) -> tuple[dict, dict]:
     """Returns (raw, summary). raw is saved to disk, summary is shown in the UI."""
     pages = []
     text_blocks = chars = tables_found = images_found = 0
-    # Text only: leave out image bytes so the saved JSON stays small. Image positions come from get_image_info.
+    # Text only: leave out image bytes so the saved JSON stays small.
+    # Image positions come from get_image_info.
     flags = pymupdf.TEXTFLAGS_DICT & ~pymupdf.TEXT_PRESERVE_IMAGES
     with pymupdf.open(path) as pdf:
         for page in pdf:

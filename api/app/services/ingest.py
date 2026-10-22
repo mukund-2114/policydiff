@@ -43,15 +43,24 @@ def register_upload(
     title, collection, version_label = title.strip(), collection.strip(), version_label.strip()
     if not title or not collection or not version_label:
         raise UploadError("Title, collection and version label are required.")
-    # These are the column sizes in the database. Checking here gives a clear message instead of a 500.
-    if len(title) > 300 or len(collection) > 200 or len(version_label) > 50 or len(owner_team or "") > 200:
-        raise UploadError("Title (300), collection (200), version label (50) or owner team (200) is too long.")
+    # These are the database column sizes. Checking here gives a clear message, not a 500.
+    if (
+        len(title) > 300
+        or len(collection) > 200
+        or len(version_label) > 50
+        or len(owner_team or "") > 200
+    ):
+        raise UploadError(
+            "Title (300), collection (200), version label (50) or owner team (200) is too long."
+        )
 
     # Same bytes, same file: skip it instead of storing and processing a copy.
     sha = hashlib.sha256(data).hexdigest()
     ws = user.workspace_id
     existing = db.scalar(
-        select(DocumentVersion).where(DocumentVersion.workspace_id == ws, DocumentVersion.sha256 == sha)
+        select(DocumentVersion).where(
+            DocumentVersion.workspace_id == ws, DocumentVersion.sha256 == sha
+        )
     )
     if existing:
         if existing.status == "failed" and existing.failed_stage == "queued":
@@ -59,14 +68,20 @@ def register_upload(
             return existing, True
         return existing, False
 
-    coll = db.scalar(select(Collection).where(Collection.workspace_id == ws, Collection.name == collection))
+    coll = db.scalar(
+        select(Collection).where(Collection.workspace_id == ws, Collection.name == collection)
+    )
     if coll is None:
         coll = Collection(workspace_id=ws, name=collection)
         db.add(coll)
         db.flush()
-    doc = db.scalar(select(Document).where(Document.collection_id == coll.id, Document.title == title))
+    doc = db.scalar(
+        select(Document).where(Document.collection_id == coll.id, Document.title == title)
+    )
     if doc is None:
-        doc = Document(workspace_id=ws, collection_id=coll.id, title=title, owner_team=owner_team or None)
+        doc = Document(
+            workspace_id=ws, collection_id=coll.id, title=title, owner_team=owner_team or None
+        )
         db.add(doc)
         db.flush()
     clash = db.scalar(

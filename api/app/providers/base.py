@@ -21,7 +21,9 @@ class Response:
 
 
 class ChatModel(Protocol):
-    def generate(self, messages: list[Message], schema: type[BaseModel] | None = None) -> Response: ...
+    def generate(
+        self, messages: list[Message], schema: type[BaseModel] | None = None
+    ) -> Response: ...
 
 
 class Embedder(Protocol):

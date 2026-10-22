@@ -113,7 +113,9 @@ def upload(
     db: Session = Depends(get_db),
 ):
     limit = get_settings().max_upload_mb * 1024 * 1024
-    data = file.file.read(limit + 1)  # read one byte past the limit so register_upload can reject it
+    data = file.file.read(
+        limit + 1
+    )  # read one byte past the limit so register_upload can reject it
     try:
         version, created = register_upload(
             db,
@@ -139,10 +141,14 @@ def list_documents(user: User = Depends(auth.current_user), db: Session = Depend
 
 
 @router.get("/versions/{version_id}", response_model=VersionDetail)
-def version_detail(version_id: uuid.UUID, user: User = Depends(auth.current_user), db: Session = Depends(get_db)):
+def version_detail(
+    version_id: uuid.UUID, user: User = Depends(auth.current_user), db: Session = Depends(get_db)
+):
     v, d, c = _get_version(db, user, version_id)
     stages = db.scalars(
-        select(VersionStage).where(VersionStage.version_id == v.id).order_by(VersionStage.started_at)
+        select(VersionStage)
+        .where(VersionStage.version_id == v.id)
+        .order_by(VersionStage.started_at)
     ).all()
     return VersionDetail(
         **_version_out(v, d, c, _pages(db, [v.id])),
@@ -152,7 +158,9 @@ def version_detail(version_id: uuid.UUID, user: User = Depends(auth.current_user
                 status=s.status,
                 started_at=s.started_at,
                 finished_at=s.finished_at,
-                duration_ms=int((s.finished_at - s.started_at).total_seconds() * 1000) if s.finished_at else None,
+                duration_ms=int((s.finished_at - s.started_at).total_seconds() * 1000)
+                if s.finished_at
+                else None,
                 detail=s.detail,
                 error=s.error,
             )
@@ -162,19 +170,26 @@ def version_detail(version_id: uuid.UUID, user: User = Depends(auth.current_user
 
 
 @router.get("/versions/{version_id}/file")
-def version_file(version_id: uuid.UUID, user: User = Depends(auth.current_user), db: Session = Depends(get_db)):
+def version_file(
+    version_id: uuid.UUID, user: User = Depends(auth.current_user), db: Session = Depends(get_db)
+):
     """The original PDF, shown inline in the browser. Only served to a signed-in user."""
     v, d, _ = _get_version(db, user, version_id)
     if not v.file_path or not Path(v.file_path).exists():
         raise HTTPException(status_code=404, detail="File is missing")
     return FileResponse(
-        v.file_path, media_type="application/pdf", filename=f"{d.title}.pdf", content_disposition_type="inline"
+        v.file_path,
+        media_type="application/pdf",
+        filename=f"{d.title}.pdf",
+        content_disposition_type="inline",
     )
 
 
 @router.get("/versions/{version_id}/parsed")
-def version_parsed(version_id: uuid.UUID, user: User = Depends(auth.current_user), db: Session = Depends(get_db)):
-    """What the parser saw, page by page: text blocks with font size, detected tables, image count."""
+def version_parsed(
+    version_id: uuid.UUID, user: User = Depends(auth.current_user), db: Session = Depends(get_db)
+):
+    """What the parser saw per page: text blocks with font size, tables, image count."""
     v, _, _ = _get_version(db, user, version_id)
     if not v.parsed_json_path or not Path(v.parsed_json_path).exists():
         raise HTTPException(status_code=404, detail="This version has not been parsed yet")

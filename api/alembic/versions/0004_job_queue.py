@@ -8,8 +8,10 @@ The job queue lives in Postgres, so there is no Redis container. Procrastinate s
 schema; this migration runs it once. After a Procrastinate upgrade, add a new migration with the
 SQL from its migrations folder.
 """
-from alembic import op
+
 from procrastinate.schema import SchemaManager
+
+from alembic import op
 
 revision = "0004"
 down_revision = "0003"
@@ -24,5 +26,10 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # Drops the tables only. The helper functions and types Procrastinate created stay behind.
-    for table in ("procrastinate_events", "procrastinate_periodic_defers", "procrastinate_jobs", "procrastinate_workers"):
+    for table in (
+        "procrastinate_events",
+        "procrastinate_periodic_defers",
+        "procrastinate_jobs",
+        "procrastinate_workers",
+    ):
         op.execute(f"DROP TABLE IF EXISTS {table} CASCADE")

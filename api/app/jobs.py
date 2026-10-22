@@ -1,7 +1,8 @@
 """The background job queue. Jobs are rows in our own Postgres (Procrastinate), so no Redis.
 
 Two sides use it:
-  - the worker container runs `python -m procrastinate --app=app.jobs.queue worker` and does the jobs;
+  - the worker container runs `python -m procrastinate --app=app.jobs.queue worker`
+    and does the jobs;
   - the api process only adds jobs. It swaps in a plain synchronous connection while it runs
     (open_for_api, called from main.py), because FastAPI endpoints here are ordinary functions.
 """

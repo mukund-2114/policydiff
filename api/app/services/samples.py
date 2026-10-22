@@ -47,7 +47,9 @@ def policies() -> list[dict]:
 
 def policy(doc_id: str) -> dict | None:
     """Metadata plus the Markdown body of one policy. None when the id is unknown."""
-    if not DOC_ID.match(doc_id):  # the id becomes part of a file name, so only accept the exact shape
+    if not DOC_ID.match(
+        doc_id
+    ):  # the id becomes part of a file name, so only accept the exact shape
         return None
     path = root() / "policies" / f"{doc_id}.md"
     if not path.exists():
@@ -72,7 +74,13 @@ def answer_key() -> dict:
     def side(s: dict) -> dict:
         unit = figures.get(s.get("figure_id", ""), {}).get("unit", "")
         text = s.get("quote") or f"{s['key']}: {s['value']} {unit}".strip()
-        return {"doc": s["doc"], "title": titles[s["doc"]], "ref": s["ref"], "kind": s["kind"], "text": text}
+        return {
+            "doc": s["doc"],
+            "title": titles[s["doc"]],
+            "ref": s["ref"],
+            "kind": s["kind"],
+            "text": text,
+        }
 
     def convert(item: dict) -> dict:
         out = {"id": item["id"], "note": item["note"], "a": side(item["a"]), "b": side(item["b"])}

@@ -37,8 +37,19 @@ def test_bold_flag_ignores_a_bold_clause_number_in_front_of_normal_text():
     span = lambda text, flags: {"text": text, "size": 11.0, "flags": flags, "bbox": [0, 0, 1, 1]}  # noqa: E731
     line = {"spans": [span("1.1 ", 16), span("This policy sets the rest and duty limits.", 4)]}
     heading = {"spans": [span("1. Purpose and scope", 16)]}
-    raw = {"pages": [{"number": 1, "images": [], "tables": [], "blocks": [
-        {"bbox": [0, 0, 1, 1], "lines": [line]}, {"bbox": [0, 0, 1, 1], "lines": [heading]}]}]}
+    raw = {
+        "pages": [
+            {
+                "number": 1,
+                "images": [],
+                "tables": [],
+                "blocks": [
+                    {"bbox": [0, 0, 1, 1], "lines": [line]},
+                    {"bbox": [0, 0, 1, 1], "lines": [heading]},
+                ],
+            }
+        ]
+    }
     clause, head = simplify(raw)[0]["blocks"]
     assert clause["bold"] is False
     assert head["bold"] is True

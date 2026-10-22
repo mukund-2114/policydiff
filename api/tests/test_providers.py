@@ -15,7 +15,12 @@ from app.providers.rerank import LLMReranker
 def cfg(provider="openai", base_url=None, allow_cloud=False):
     return ModelsConfig(
         chat=ChatCfg(provider=provider, model="m", base_url=base_url),
-        embed=EmbedCfg(provider="ollama" if provider == "ollama" else "openai", model="e", dims=8, base_url=base_url),
+        embed=EmbedCfg(
+            provider="ollama" if provider == "ollama" else "openai",
+            model="e",
+            dims=8,
+            base_url=base_url,
+        ),
         egress=EgressCfg(allow_cloud=allow_cloud),
     )
 

@@ -8,9 +8,11 @@ import pytest
 from app.services import samples
 
 
-@pytest.mark.parametrize("bad", ["../secret", "..\\secret", "TRV-001/../../x", "trv-001", "TRV-1", ""])
+@pytest.mark.parametrize(
+    "bad", ["../secret", "..\\secret", "TRV-001/../../x", "trv-001", "TRV-1", ""]
+)
 def test_policy_ids_that_are_not_the_exact_shape_are_refused(bad):
-    # The id becomes part of a file path, so anything but ABC-123 must be rejected before any file is touched.
+    # The id becomes part of a file path, so anything but ABC-123 must be rejected first.
     assert samples.policy(bad) is None
 
 

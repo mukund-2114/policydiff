@@ -33,3 +33,9 @@ pythonpath = ["."]
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
+# Pinned so a new ruff release cannot add rules and break CI. B008 is off because FastAPI
+# needs Depends(...) in argument defaults.
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["B008"]

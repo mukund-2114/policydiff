@@ -1,14 +1,14 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from sqlalchemy.orm import Session
 
+from app.auth import bootstrap_admin
 from app.config import PRODUCT_NAME
 from app.db.session import get_engine
 from app.jobs import open_for_api
 from app.routers import auth as auth_router
 from app.routers import documents, health, samples
-from app.auth import bootstrap_admin
-from sqlalchemy.orm import Session
 
 
 @asynccontextmanager
