@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     session_max_age_seconds: int = 60 * 60 * 12
     cookie_secure: bool = False  # set true when served over HTTPS
+    files_dir: str = "/data/files"  # uploaded PDFs and parser output
+    samples_dir: str = "/samples"  # optional read-only folder with the Northwind demo corpus
+    max_upload_mb: int = 25
 
 
 @lru_cache

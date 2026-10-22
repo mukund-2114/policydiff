@@ -19,6 +19,9 @@ dependencies = [
     "httpx",
     "openai",
     "anthropic",
+    "procrastinate>=3.10.0",
+    "pymupdf<2",
+    "python-multipart>=0.0.32",
 ]
 
 [dependency-groups]

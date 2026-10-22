@@ -9,5 +9,6 @@ from app.models.tables import (  # noqa: F401
     PairJudgment,
     Scan,
     User,
+    VersionStage,
     Workspace,
 )
