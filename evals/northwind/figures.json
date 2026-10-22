@@ -1,0 +1,23 @@
+{
+  "crew_duty_hours": {
+    "kind": "bar",
+    "title": "Maximum flight duty period",
+    "unit": "hours",
+    "data": {
+      "Short-haul pilots": 11,
+      "Long-haul pilots": 13,
+      "Short-haul cabin crew": 12,
+      "Long-haul cabin crew": 14
+    }
+  },
+  "cabin_bag_dimensions": {
+    "kind": "box",
+    "title": "Maximum cabin bag size",
+    "unit": "cm",
+    "data": {
+      "Length": 55,
+      "Width": 40,
+      "Depth": 23
+    }
+  }
+}

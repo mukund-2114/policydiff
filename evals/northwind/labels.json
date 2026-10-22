@@ -1,0 +1,183 @@
+{
+  "corpus": "Northwind Air",
+  "schema": "Each side is a clause (doc, ref, quote), a table row (doc, ref, quote joined with ' | '), or a figure value (doc, ref, figure_id, key, value). Quotes are checked against the Markdown by validate.py.",
+  "conflicts": [
+    {
+      "id": "C01", "type": "numeric_mismatch", "modality": "text",
+      "a": {"doc": "TRV-001", "kind": "clause", "ref": "5.1", "quote": "Travel expense claims must be submitted within 60 days of the end of the trip."},
+      "b": {"doc": "EXP-001", "kind": "clause", "ref": "5.1", "quote": "Expense claims must be submitted within 30 days of the expense date."},
+      "note": "Claim deadline is 60 days in one policy and 30 days in the other."
+    },
+    {
+      "id": "C02", "type": "numeric_mismatch", "modality": "text",
+      "a": {"doc": "LEV-001", "kind": "clause", "ref": "2.1", "quote": "Full-time employees receive 20 days of paid vacation per year."},
+      "b": {"doc": "HRB-001", "kind": "clause", "ref": "2.1", "quote": "Full-time employees receive 25 days of paid vacation per year."},
+      "note": "Annual vacation is 20 days vs 25 days."
+    },
+    {
+      "id": "C03", "type": "numeric_mismatch", "modality": "text",
+      "a": {"doc": "LEV-001", "kind": "clause", "ref": "4.1", "quote": "up to 5 paid days of bereavement leave"},
+      "b": {"doc": "HRB-001", "kind": "clause", "ref": "4.2", "quote": "up to 3 paid days of bereavement leave"},
+      "note": "Bereavement leave for immediate family is 5 days vs 3 days."
+    },
+    {
+      "id": "C04", "type": "numeric_mismatch", "modality": "text",
+      "a": {"doc": "ITS-001", "kind": "clause", "ref": "2.2", "quote": "Passwords must be at least 14 characters long."},
+      "b": {"doc": "ITA-001", "kind": "clause", "ref": "2.1", "quote": "Passwords must be at least 10 characters long."},
+      "note": "Minimum password length is 14 vs 10."
+    },
+    {
+      "id": "C05", "type": "numeric_mismatch", "modality": "text",
+      "a": {"doc": "ITS-001", "kind": "clause", "ref": "5.3", "quote": "Security incidents must be reported to the Security Operations Centre within 1 hour of discovery."},
+      "b": {"doc": "INC-001", "kind": "clause", "ref": "3.1", "quote": "All other incidents, including cyber incidents, must be reported within 24 hours of discovery."},
+      "note": "Cyber incident reporting window is 1 hour vs 24 hours."
+    },
+    {
+      "id": "C06", "type": "numeric_mismatch", "modality": "text",
+      "a": {"doc": "EXP-001", "kind": "clause", "ref": "7.1", "quote": "Receipts and expense records are kept for 6 years."},
+      "b": {"doc": "DAT-001", "kind": "clause", "ref": "2.1", "quote": "Financial records are retained for 7 years."},
+      "note": "Expense records are financial records. Retention is 6 years vs 7 years."
+    },
+    {
+      "id": "C07", "type": "obligation_conflict", "modality": "text",
+      "a": {"doc": "TRV-001", "kind": "clause", "ref": "2.1", "quote": "Every business trip requires written approval from the employee's line manager before any booking is made, regardless of cost."},
+      "b": {"doc": "EXP-001", "kind": "clause", "ref": "2.3", "quote": "Purchases and travel costs under CAD 500 do not require prior approval."},
+      "note": "Travel under CAD 500 needs approval in one policy and none in the other."
+    },
+    {
+      "id": "C08", "type": "obligation_conflict", "modality": "text",
+      "a": {"doc": "TRV-001", "kind": "clause", "ref": "3.2", "quote": "Business class is not permitted on any flight, for any employee, under any circumstances."},
+      "b": {"doc": "EXP-001", "kind": "clause", "ref": "4.3", "quote": "Business class may be booked for flights longer than 6 hours with director approval."},
+      "note": "Business class is banned in one policy and allowed with approval in the other."
+    },
+    {
+      "id": "C09", "type": "obligation_conflict", "modality": "text",
+      "a": {"doc": "RMT-001", "kind": "clause", "ref": "2.1", "quote": "Employees may work remotely up to 3 days per week without approval."},
+      "b": {"doc": "HRB-001", "kind": "clause", "ref": "5.1", "quote": "All remote work requires prior written approval from the employee's department head."},
+      "note": "Remote work needs no approval vs always needs approval."
+    },
+    {
+      "id": "C10", "type": "obligation_conflict", "modality": "text",
+      "a": {"doc": "ITS-001", "kind": "clause", "ref": "3.1", "quote": "Employees must not use personal devices to access company email."},
+      "b": {"doc": "RMT-001", "kind": "clause", "ref": "4.2", "quote": "Employees may access company email from a personal phone, provided the company device management app is installed."},
+      "note": "Personal devices for email are forbidden vs allowed with a condition."
+    },
+    {
+      "id": "C11", "type": "scope_overlap", "modality": "text",
+      "a": {"doc": "TRV-001", "kind": "clause", "ref": "6.1", "quote": "This policy governs all vehicle rentals used for business travel, and employees book rental cars through the travel portal."},
+      "b": {"doc": "PRC-001", "kind": "clause", "ref": "7.1", "quote": "This policy governs all vehicle rentals, and all rental agreements must be arranged by the Procurement team."},
+      "note": "Both policies claim vehicle rentals with different booking routes."
+    },
+    {
+      "id": "C12", "type": "scope_overlap", "modality": "text",
+      "a": {"doc": "DAT-001", "kind": "clause", "ref": "1.2", "quote": "The Compliance team is responsible for approving the deletion of customer data."},
+      "b": {"doc": "ITS-001", "kind": "clause", "ref": "7.2", "quote": "IT Security approves all deletion of customer data before it is carried out."},
+      "note": "Two different teams own the approval of customer data deletion."
+    },
+    {
+      "id": "C13", "type": "definition_mismatch", "modality": "text",
+      "a": {"doc": "LEV-001", "kind": "clause", "ref": "1.3", "quote": "A business day is any day from Monday to Friday, excluding public holidays."},
+      "b": {"doc": "REF-001", "kind": "clause", "ref": "1.2", "quote": "A business day is any day from Monday to Saturday, excluding public holidays."},
+      "note": "Business day includes Saturday in one policy only."
+    },
+    {
+      "id": "C14", "type": "definition_mismatch", "modality": "text",
+      "a": {"doc": "REF-001", "kind": "clause", "ref": "1.3", "quote": "A delay is a departure more than 3 hours after the scheduled time."},
+      "b": {"doc": "CSS-001", "kind": "clause", "ref": "1.3", "quote": "A delay is a departure 2 hours or more after the scheduled time."},
+      "note": "A delay starts after 3 hours in one policy and at 2 hours in the other."
+    },
+    {
+      "id": "C15", "type": "definition_mismatch", "modality": "text",
+      "a": {"doc": "ITS-001", "kind": "clause", "ref": "1.3", "quote": "Confidential data means customer personal data and financial records."},
+      "b": {"doc": "DAT-001", "kind": "clause", "ref": "1.3", "quote": "Confidential data means customer personal data, financial records and employee records."},
+      "note": "Employee records count as confidential in one definition only."
+    },
+    {
+      "id": "C16", "type": "outdated_reference", "modality": "text",
+      "a": {"doc": "TRV-001", "kind": "clause", "ref": "5.2", "quote": "Claims are submitted using Form EX-12 in the finance portal."},
+      "b": {"doc": "EXP-001", "kind": "clause", "ref": "2.4", "quote": "Form EX-12 was withdrawn on 1 September 2024. All claims must be filed on Form EX-14 in the finance portal."},
+      "note": "Travel Policy cites a form that the Expense Policy says is withdrawn."
+    },
+    {
+      "id": "C17", "type": "outdated_reference", "modality": "text",
+      "a": {"doc": "INC-001", "kind": "clause", "ref": "5.2", "quote": "Safety incidents are handled under Safety Policy SAF-002."},
+      "b": {"doc": "CRW-001", "kind": "clause", "ref": "1.3", "quote": "This policy replaces Safety Policy SAF-002, which was withdrawn on 15 January 2025."},
+      "note": "Incident Reporting Policy cites SAF-002, which the Crew policy says is withdrawn."
+    },
+    {
+      "id": "C18", "type": "outdated_reference", "modality": "text",
+      "a": {"doc": "ITA-001", "kind": "clause", "ref": "6.1", "quote": "For personal device rules, see the Bring Your Own Device Policy IT-007."},
+      "b": {"doc": "ITS-001", "kind": "clause", "ref": "8.1", "quote": "Bring Your Own Device Policy IT-007 was retired on 1 February 2025."},
+      "note": "Acceptable Use Policy points to IT-007, which the Information Security Policy says is retired."
+    },
+    {
+      "id": "C19", "type": "numeric_mismatch", "modality": "table",
+      "a": {"doc": "TRV-001", "kind": "table", "ref": "Table 4.1", "quote": "Toronto | CAD 95"},
+      "b": {"doc": "EXP-001", "kind": "table", "ref": "Table 3.1", "quote": "Toronto | CAD 85"},
+      "note": "Toronto per diem is CAD 95 vs CAD 85."
+    },
+    {
+      "id": "C20", "type": "numeric_mismatch", "modality": "table",
+      "a": {"doc": "BAG-001", "kind": "table", "ref": "Table 2.1", "quote": "Economy | 1 | 23 kg"},
+      "b": {"doc": "CSS-001", "kind": "table", "ref": "Table 2.1", "quote": "Economy | 1 | 20 kg"},
+      "note": "Economy checked bag limit is 23 kg vs 20 kg."
+    },
+    {
+      "id": "C21", "type": "numeric_mismatch", "modality": "table",
+      "a": {"doc": "REF-001", "kind": "table", "ref": "Table 3.1", "quote": "Credit card | 7 business days"},
+      "b": {"doc": "CSS-001", "kind": "table", "ref": "Table 3.1", "quote": "Credit card | 10 business days"},
+      "note": "Credit card refund time is 7 vs 10 business days."
+    },
+    {
+      "id": "C22", "type": "numeric_mismatch", "modality": "table",
+      "a": {"doc": "CRW-001", "kind": "table", "ref": "Table 2.1", "quote": "Short-haul | 12 hours"},
+      "b": {"doc": "OPS-001", "kind": "table", "ref": "Table 2.1", "quote": "Short-haul | 10 hours"},
+      "note": "Short-haul minimum rest is 12 hours vs 10 hours."
+    },
+    {
+      "id": "C23", "type": "numeric_mismatch", "modality": "table",
+      "a": {"doc": "EXP-001", "kind": "table", "ref": "Table 5.1", "quote": "Up to CAD 2,500 | Department manager"},
+      "b": {"doc": "PRC-001", "kind": "table", "ref": "Table 4.1", "quote": "Up to CAD 5,000 | Department manager"},
+      "note": "Department manager approval limit is CAD 2,500 vs CAD 5,000."
+    },
+    {
+      "id": "C24", "type": "numeric_mismatch", "modality": "figure",
+      "a": {"doc": "CRW-001", "kind": "figure", "ref": "Figure 3.1", "figure_id": "crew_duty_hours", "key": "Long-haul pilots", "value": 13},
+      "b": {"doc": "OPS-001", "kind": "clause", "ref": "4.1", "quote": "The maximum flight duty period for long-haul pilots is 12 hours."},
+      "note": "The chart shows 13 hours for long-haul pilots. The text says 12."
+    },
+    {
+      "id": "C25", "type": "numeric_mismatch", "modality": "figure",
+      "a": {"doc": "BAG-001", "kind": "figure", "ref": "Figure 3.1", "figure_id": "cabin_bag_dimensions", "key": "Depth", "value": 23},
+      "b": {"doc": "CSS-001", "kind": "clause", "ref": "2.2", "quote": "A cabin bag must not exceed 55 x 40 x 20 cm."},
+      "note": "The diagram shows a 23 cm depth. The text says 20 cm."
+    }
+  ],
+  "near_misses": [
+    {"id": "N01", "a": {"doc": "TRV-001", "kind": "clause", "ref": "2.2", "quote": "Bookings must be made through the approved travel portal."}, "b": {"doc": "PRC-001", "kind": "clause", "ref": "6.1", "quote": "Employees must book flights through the approved travel portal."}, "note": "Same requirement, restated."},
+    {"id": "N02", "a": {"doc": "EXP-001", "kind": "clause", "ref": "5.3", "quote": "Receipts are required for any expense over CAD 25."}, "b": {"doc": "TRV-001", "kind": "clause", "ref": "5.4", "quote": "Receipts are required for any expense over CAD 25."}, "note": "Identical rule."},
+    {"id": "N03", "a": {"doc": "LEV-001", "kind": "clause", "ref": "3.1", "quote": "Employees receive 10 paid sick days per year."}, "b": {"doc": "HRB-001", "kind": "clause", "ref": "3.1", "quote": "Employees are entitled to 10 paid sick days each year."}, "note": "Same number of sick days."},
+    {"id": "N04", "a": {"doc": "LEV-001", "kind": "clause", "ref": "5.1", "quote": "The company tops up parental leave benefits for up to 16 weeks."}, "b": {"doc": "HRB-001", "kind": "clause", "ref": "4.4", "quote": "Parental leave is topped up by the company for 16 weeks."}, "note": "Same 16 week top-up."},
+    {"id": "N05", "a": {"doc": "ITS-001", "kind": "clause", "ref": "4.1", "quote": "Multi-factor authentication is required for remote access to company systems."}, "b": {"doc": "RMT-001", "kind": "clause", "ref": "4.1", "quote": "Multi-factor authentication is required for remote access to company systems."}, "note": "Identical rule."},
+    {"id": "N06", "a": {"doc": "ITS-001", "kind": "clause", "ref": "2.4", "quote": "Accounts are locked after 5 failed sign-in attempts."}, "b": {"doc": "ITA-001", "kind": "clause", "ref": "2.3", "quote": "Accounts are locked after 5 failed sign-in attempts."}, "note": "Identical rule."},
+    {"id": "N07", "a": {"doc": "ITS-001", "kind": "clause", "ref": "5.1", "quote": "Lost or stolen devices must be reported to the IT service desk immediately."}, "b": {"doc": "ITA-001", "kind": "clause", "ref": "5.1", "quote": "Employees must report a lost or stolen device to the IT service desk immediately."}, "note": "Same rule, different wording."},
+    {"id": "N08", "a": {"doc": "INC-001", "kind": "clause", "ref": "2.1", "quote": "Safety incidents must be reported within 24 hours."}, "b": {"doc": "CRW-001", "kind": "clause", "ref": "6.1", "quote": "Crew must report safety incidents within 24 hours."}, "note": "Same 24 hour window for safety incidents."},
+    {"id": "N09", "a": {"doc": "REF-001", "kind": "clause", "ref": "2.1", "quote": "Passengers may cancel within 24 hours of booking for a full refund."}, "b": {"doc": "CSS-001", "kind": "clause", "ref": "3.2", "quote": "Passengers who cancel within 24 hours of booking are entitled to a full refund."}, "note": "Same 24 hour free cancellation."},
+    {"id": "N10", "a": {"doc": "BAG-001", "kind": "clause", "ref": "4.1", "quote": "The excess baggage fee is CAD 100 per bag above the allowance."}, "b": {"doc": "CSS-001", "kind": "clause", "ref": "2.3", "quote": "The excess baggage fee is CAD 100 per bag above the allowance."}, "note": "Identical fee."},
+    {"id": "N11", "a": {"doc": "BAG-001", "kind": "table", "ref": "Table 2.1", "quote": "Business | 2 | 32 kg"}, "b": {"doc": "CSS-001", "kind": "table", "ref": "Table 2.1", "quote": "Business | 2 | 32 kg"}, "note": "Matching row in tables that differ on another row."},
+    {"id": "N12", "a": {"doc": "CRW-001", "kind": "clause", "ref": "2.2", "quote": "Crew must not report for duty within 8 hours of consuming alcohol."}, "b": {"doc": "OPS-001", "kind": "clause", "ref": "3.1", "quote": "Crew may not operate a flight within 8 hours of consuming alcohol."}, "note": "Same 8 hour rule."},
+    {"id": "N13", "a": {"doc": "DAT-001", "kind": "clause", "ref": "2.4", "quote": "A legal hold overrides all retention schedules."}, "b": {"doc": "INC-001", "kind": "clause", "ref": "6.2", "quote": "A legal hold overrides all retention schedules."}, "note": "Identical rule."},
+    {"id": "N14", "a": {"doc": "DAT-001", "kind": "clause", "ref": "3.1", "quote": "Personnel files are retained for 7 years after employment ends."}, "b": {"doc": "HRB-001", "kind": "clause", "ref": "6.2", "quote": "Personnel files are retained for 7 years after employment ends."}, "note": "Identical rule."},
+    {"id": "N15", "a": {"doc": "PRC-001", "kind": "clause", "ref": "3.1", "quote": "Contracts over CAD 50,000 require three competitive quotes."}, "b": {"doc": "EXP-001", "kind": "clause", "ref": "6.1", "quote": "Any single purchase over CAD 50,000 must follow the competitive quote process in the Procurement Policy."}, "note": "Expense Policy defers to the Procurement Policy."},
+    {"id": "N16", "a": {"doc": "TRV-001", "kind": "clause", "ref": "3.1", "quote": "Economy class is the default for all flights."}, "b": {"doc": "EXP-001", "kind": "clause", "ref": "4.2", "quote": "Economy class is the standard fare for flights."}, "note": "Same default."},
+    {"id": "N17", "a": {"doc": "TRV-001", "kind": "clause", "ref": "4.1.1", "quote": "Hotel rates are capped at CAD 220 per night in major cities."}, "b": {"doc": "EXP-001", "kind": "clause", "ref": "4.1", "quote": "Hotel stays are reimbursed up to CAD 220 per night."}, "note": "Same CAD 220 cap."},
+    {"id": "N18", "a": {"doc": "TRV-001", "kind": "clause", "ref": "4.3.1", "quote": "Use of a personal vehicle for business travel is reimbursed at CAD 0.68 per kilometre."}, "b": {"doc": "EXP-001", "kind": "clause", "ref": "4.4", "quote": "Use of a personal vehicle is reimbursed at CAD 0.68 per kilometre."}, "note": "Same mileage rate."},
+    {"id": "N19", "a": {"doc": "EXP-001", "kind": "clause", "ref": "6.2", "quote": "Gifts to customers valued over CAD 100 must be recorded in the gift register."}, "b": {"doc": "HRB-001", "kind": "clause", "ref": "7.1", "quote": "Gifts to customers valued over CAD 100 must be recorded in the gift register."}, "note": "Identical rule."},
+    {"id": "N20", "a": {"doc": "RMT-001", "kind": "clause", "ref": "3.2", "quote": "Remote work from outside Canada requires approval from both Human Resources and Legal."}, "b": {"doc": "ITS-001", "kind": "clause", "ref": "6.2", "quote": "Working from outside Canada requires approval from HR and Legal."}, "note": "Same approvers."},
+    {"id": "N21", "a": {"doc": "RMT-001", "kind": "clause", "ref": "5.1", "quote": "Employees receive a home office equipment allowance of CAD 500 once every 3 years."}, "b": {"doc": "EXP-001", "kind": "clause", "ref": "3.3", "quote": "Employees receive a home office equipment allowance of CAD 500 once every three years."}, "note": "Same allowance, number written as a word."},
+    {"id": "N22", "a": {"doc": "ITA-001", "kind": "clause", "ref": "3.2", "quote": "Employees may not install unapproved software on company devices."}, "b": {"doc": "ITS-001", "kind": "clause", "ref": "4.3", "quote": "Software may only be installed after approval from IT."}, "note": "Same rule, different wording."},
+    {"id": "N23", "a": {"doc": "LEV-001", "kind": "clause", "ref": "2.3", "quote": "Unused vacation may be carried over into the next year, up to 5 days."}, "b": {"doc": "HRB-001", "kind": "clause", "ref": "2.4", "quote": "Employees may carry over up to 5 unused vacation days to the following year."}, "note": "Same 5 day carry over."},
+    {"id": "N24", "a": {"doc": "CSS-001", "kind": "clause", "ref": "4.1", "quote": "Complaints are acknowledged within 2 business days."}, "b": {"doc": "REF-001", "kind": "clause", "ref": "5.1", "quote": "Refund complaints are acknowledged within 2 business days."}, "note": "Same 2 business day acknowledgement."},
+    {"id": "N25", "a": {"doc": "OPS-001", "kind": "clause", "ref": "6.1", "quote": "Duty and rest records are retained for 3 years."}, "b": {"doc": "DAT-001", "kind": "clause", "ref": "4.1", "quote": "Crew duty records are retained for 3 years."}, "note": "Same 3 year retention."}
+  ]
+}
