@@ -8,4 +8,6 @@ RUN npm run build
 FROM caddy:2-alpine
 COPY Caddyfile /etc/caddy/Caddyfile
 COPY --from=build /app/dist /srv
-EXPOSE 80
+# Port 8080 so the server can run without root. Compose maps it to 8080 on the host.
+USER 10001
+EXPOSE 8080
