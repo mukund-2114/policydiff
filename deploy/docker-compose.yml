@@ -10,6 +10,13 @@ x-api-env: &api-env
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   EMBED_DIMS: ${EMBED_DIMS:-1536}
   MODELS_CONFIG: /config/models.yaml
+  # "local" keeps files in the "files" volume. "s3" uses the bucket named by the S3_* settings.
+  STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+  S3_BUCKET: ${S3_BUCKET:-policydiff}
+  S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-}
+  S3_REGION: ${S3_REGION:-}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:-}
 
 services:
   db:

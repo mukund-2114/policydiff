@@ -15,7 +15,7 @@ from app.auth import audit
 from app.config import get_settings
 from app.jobs import enqueue_parse
 from app.models import Collection, Document, DocumentVersion, User
-from app.storage import originals_path
+from app.storage import get_storage, original_key
 
 log = logging.getLogger(__name__)
 
@@ -102,10 +102,14 @@ def register_upload(
     )
     db.add(version)
     db.flush()  # gives the version its id, which names the file on disk
-    path = originals_path(version.id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(data)
-    version.file_path = str(path)
+    key = original_key(version.id)
+    try:
+        get_storage().put(key, data)
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()  # nothing was saved, so the version row must not stay behind
+        log.exception("could not store the upload")
+        raise UploadError(f"Could not store the file: {exc}") from exc
+    version.file_path = key
     audit(db, user, ws, "document_upload", version_id=str(version.id), title=title, sha256=sha)
     db.commit()  # the version must be saved before the job is queued, or the worker may not find it
 

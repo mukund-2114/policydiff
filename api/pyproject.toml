@@ -22,6 +22,7 @@ dependencies = [
     "procrastinate>=3.10.0",
     "pymupdf<2",
     "python-multipart>=0.0.32",
+    "boto3",
 ]
 
 [dependency-groups]
