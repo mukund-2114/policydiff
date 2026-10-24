@@ -116,6 +116,7 @@ class Chunk(Base):
     workspace_id: Mapped[uuid.UUID] = _ws()
     version_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("document_version.id"), index=True)
     kind: Mapped[str] = mapped_column(String(10), default="text")  # text, table, figure
+    position: Mapped[int] = mapped_column(Integer, default=0)  # order of the chunk in the document
     heading_path: Mapped[str | None] = mapped_column(Text)
     text: Mapped[str] = mapped_column(Text)
     context_header: Mapped[str | None] = mapped_column(Text)
