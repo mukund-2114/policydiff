@@ -1,14 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, type ParsedPage, type Stage } from "../api";
+import { api, type Chunk, type ParsedPage, type Stage } from "../api";
+import { PipelineStepper } from "../components/PipelineStepper";
 import { button, formatDuration, panel, td, th } from "../ui";
-
-// Stages that are planned but not built yet. They are listed so the whole pipeline is visible.
-const UPCOMING = [
-  ["Chunking", "Cut the text into clauses and keep the heading path of each one."],
-  ["Contextual headers", "Add the document title, version and heading path in front of each chunk."],
-  ["Embedding and indexing", "Turn each chunk into a vector and a keyword index."],
-];
 
 function StageRow({ s }: { s: Stage }) {
   return (
@@ -34,17 +28,41 @@ function StageRow({ s }: { s: Stage }) {
 }
 
 function Pipeline({ id }: { id: string }) {
+  const qc = useQueryClient();
+  const reembed = useMutation({
+    mutationFn: () => api.reembed(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["version", id] }),
+  });
+  const reparse = useMutation({
+    mutationFn: () => api.reparse(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["version", id] });
+      qc.invalidateQueries({ queryKey: ["chunks", id] });
+    },
+  });
   const v = useQuery({
     queryKey: ["version", id],
     queryFn: () => api.version(id),
-    refetchInterval: (q) => (q.state.data && ["queued", "parsing"].includes(q.state.data.status) ? 1000 : false),
+    refetchInterval: (q) => (q.state.data && ["queued", "parsing", "parsed", "chunking", "chunked", "embedding"].includes(q.state.data.status) ? 1000 : false),
   });
   if (!v.data) return null;
   return (
     <div className="space-y-3">
-      <p className="text-muted">
-        Status: <span className="font-mono text-text">{v.data.status}</span>
-      </p>
+      <div className="flex items-baseline gap-3">
+        <p className="text-muted">
+          Status: <span className="font-mono text-text">{v.data.status}</span>
+        </p>
+        <div className="ml-auto flex gap-2">
+          <button className={button} disabled={reembed.isPending} onClick={() => reembed.mutate()}>
+            Embed again
+          </button>
+          <button className={button} disabled={reparse.isPending} onClick={() => reparse.mutate()}>
+            Parse again
+          </button>
+        </div>
+      </div>
+      {reembed.isError && <p className="text-danger">{(reembed.error as Error).message}</p>}
+      {reparse.isError && <p className="text-danger">{(reparse.error as Error).message}</p>}
       <ol className={panel}>
         <li className="flex items-baseline gap-3 border-b border-border px-4 py-3">
           <span className="font-medium">Upload</span>
@@ -54,11 +72,47 @@ function Pipeline({ id }: { id: string }) {
         {v.data.stages.map((s) => (
           <StageRow key={s.started_at} s={s} />
         ))}
-        {UPCOMING.map(([name, what]) => (
-          <li key={name} className="flex items-baseline gap-3 border-t border-border px-4 py-3 text-muted">
-            <span className="font-medium">{name}</span>
-            <span className="font-mono">not built yet</span>
-            <span className="ml-auto text-right">{what}</span>
+      </ol>
+    </div>
+  );
+}
+
+function ChunksView({ id }: { id: string }) {
+  const qc = useQueryClient();
+  const chunks = useQuery({ queryKey: ["chunks", id], queryFn: () => api.chunks(id) });
+  const rechunk = useMutation({
+    mutationFn: () => api.rechunk(id),
+    onSuccess: () => {
+      // The job runs in the worker, so check again shortly instead of waiting for a page reload.
+      for (const ms of [1500, 4000]) {
+        setTimeout(() => {
+          qc.invalidateQueries({ queryKey: ["chunks", id] });
+          qc.invalidateQueries({ queryKey: ["version", id] });
+        }, ms);
+      }
+    },
+  });
+  if (!chunks.data) return null;
+  return (
+    <div className="space-y-3">
+      <div className="flex items-baseline gap-3">
+        <p className="text-muted">
+          {chunks.data.length} chunks. The line above each one is added in front of the text before it is embedded.
+        </p>
+        <button className={`${button} ml-auto`} disabled={rechunk.isPending} onClick={() => rechunk.mutate()}>
+          Cut again
+        </button>
+      </div>
+      {rechunk.isError && <p className="text-danger">{(rechunk.error as Error).message}</p>}
+      {chunks.data.length === 0 && <p className="text-muted">No chunks yet. They appear after the document is parsed.</p>}
+      <ol className="space-y-3">
+        {chunks.data.map((c: Chunk) => (
+          <li key={c.position} className={`${panel} px-4 py-3`}>
+            <p className="font-mono text-muted">
+              {c.position + 1} | page {c.page} | {c.kind} | {c.embedding_model ? "embedded" : "not embedded"}
+            </p>
+            {c.context_header && <p className="mt-1 text-muted">{c.context_header}</p>}
+            <p className="mt-1 whitespace-pre-wrap">{c.text}</p>
           </li>
         ))}
       </ol>
@@ -132,8 +186,30 @@ function ParsedView({ id }: { id: string }) {
 }
 
 export function DocumentDetail({ id }: { id: string }) {
-  const [tab, setTab] = useState<"pipeline" | "parsed">("pipeline");
-  const v = useQuery({ queryKey: ["version", id], queryFn: () => api.version(id) });
+  const [tab, setTab] = useState<"pipeline" | "chunks" | "parsed">("pipeline");
+  // Hiding the PDF gives the tabs the full width. The choice is remembered between visits.
+  const [showPdf, setShowPdf] = useState(() => {
+    try {
+      return localStorage.getItem("showPdf") !== "no";
+    } catch {
+      return true;
+    }
+  });
+  const togglePdf = () => {
+    setShowPdf(!showPdf);
+    try {
+      localStorage.setItem("showPdf", showPdf ? "no" : "yes");
+    } catch {
+      /* the page still works when storage is blocked */
+    }
+  };
+  // Polled while work is going on, so the steps move by themselves. The Pipeline tab shares this query.
+  const v = useQuery({
+    queryKey: ["version", id],
+    queryFn: () => api.version(id),
+    refetchInterval: (q) =>
+      q.state.data && ["queued", "parsing", "parsed", "chunking", "chunked", "embedding"].includes(q.state.data.status) ? 1000 : false,
+  });
   if (v.isError) return <p className="p-6 text-danger">Document not found.</p>;
   if (!v.data) return null;
   const d = v.data;
@@ -150,28 +226,42 @@ export function DocumentDetail({ id }: { id: string }) {
         <span className="font-mono text-muted">
           {d.collection} | v{d.version_label}
           {d.effective_from ? ` | effective ${d.effective_from}` : ""}
+          {d.status === "superseded" ? ` | superseded${d.effective_to ? ` on ${d.effective_to}` : ""}` : ""}
           {d.owner_team ? ` | ${d.owner_team}` : ""}
         </span>
-        <a className={`${button} ml-auto`} href={`#/compare?a=${d.id}`}>
+        <button className={`${button} ml-auto`} onClick={togglePdf} aria-pressed={!showPdf}>
+          {showPdf ? "Hide PDF" : "Show PDF"}
+        </button>
+        <a className={button} href={`#/compare?a=${d.id}`}>
           Compare with another
         </a>
       </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <iframe
-          title={d.title}
-          src={api.fileUrl(d.id)}
-          className="h-[70vh] md:h-[calc(100vh-6rem)] w-full rounded-ctl border border-border bg-surface"
-        />
+      <div className="mb-4">
+        <PipelineStepper v={d} onOpenTab={setTab} />
+      </div>
+      <div className={`grid gap-4 ${showPdf ? "lg:grid-cols-2" : ""}`}>
+        {showPdf && (
+          <iframe
+            title={d.title}
+            src={api.fileUrl(d.id)}
+            className="h-[70vh] md:h-[calc(100vh-6rem)] w-full rounded-ctl border border-border bg-surface"
+          />
+        )}
         <div className="h-[70vh] md:h-[calc(100vh-6rem)] overflow-y-auto">
           <div className="mb-3 flex border-b border-border">
             <button className={tabClass("pipeline")} onClick={() => setTab("pipeline")}>
               Pipeline
             </button>
+            <button className={tabClass("chunks")} onClick={() => setTab("chunks")}>
+              Chunks
+            </button>
             <button className={tabClass("parsed")} onClick={() => setTab("parsed")}>
               Parser output
             </button>
           </div>
-          {tab === "pipeline" ? <Pipeline id={id} /> : <ParsedView id={id} />}
+          {tab === "pipeline" && <Pipeline id={id} />}
+          {tab === "chunks" && <ChunksView id={id} />}
+          {tab === "parsed" && <ParsedView id={id} />}
         </div>
       </div>
     </div>

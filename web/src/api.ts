@@ -15,7 +15,8 @@ export type Version = {
   owner_team: string | null;
   version_label: string;
   effective_from: string | null;
-  status: string; // queued, parsing, parsed, failed
+  effective_to: string | null;
+  status: string; // queued, parsing, parsed, chunking, chunked, embedding, ready, superseded, failed
   failed_stage: string | null;
   created_at: string;
   pages: number | null;
@@ -29,6 +30,16 @@ export type Stage = {
   duration_ms: number | null;
   detail: Record<string, number | string> | null;
   error: string | null;
+};
+
+export type Chunk = {
+  position: number;
+  kind: "text" | "table" | "figure";
+  heading_path: string | null;
+  text: string;
+  context_header: string | null;
+  page: number | null;
+  embedding_model: string | null;
 };
 
 export type VersionDetail = Version & { stages: Stage[] };
@@ -100,6 +111,10 @@ export const api = {
   documents: () => request<Version[]>("/documents"),
   version: (id: string) => request<VersionDetail>(`/versions/${id}`),
   parsed: (id: string) => request<{ pages: ParsedPage[] }>(`/versions/${id}/parsed`),
+  chunks: (id: string) => request<Chunk[]>(`/versions/${id}/chunks`),
+  rechunk: (id: string) => request<{ queued: boolean }>(`/versions/${id}/chunk`, { method: "POST" }),
+  reembed: (id: string) => request<{ queued: boolean }>(`/versions/${id}/embed`, { method: "POST" }),
+  reparse: (id: string) => request<{ queued: boolean }>(`/versions/${id}/parse`, { method: "POST" }),
   upload: (form: FormData) => request<UploadResult>("/documents/upload", { method: "POST", body: form }),
   fileUrl: (id: string) => `/api/versions/${id}/file`,
 

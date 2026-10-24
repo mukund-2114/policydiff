@@ -4,7 +4,7 @@ import { ApiError, api, type User } from "../api";
 import { compareHref, go } from "../router";
 import { button, field, panel, primary, td, th } from "../ui";
 
-const ACTIVE = ["queued", "parsing"];
+const ACTIVE = ["queued", "parsing", "parsed", "chunking", "chunked", "embedding"];
 
 function UploadForm({ collections, onDone }: { collections: string[]; onDone: () => void }) {
   const qc = useQueryClient();
@@ -13,7 +13,10 @@ function UploadForm({ collections, onDone }: { collections: string[]; onDone: ()
     mutationFn: (form: FormData) => api.upload(form),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["documents"] });
-      if (!res.duplicate) onDone();
+      if (!res.duplicate) {
+        onDone();
+        go(`#/documents/${res.version.id}`); // open it, so the steps can be watched as they run
+      }
     },
   });
 
@@ -158,8 +161,9 @@ export function Documents({ user }: { user: User }) {
                 <td className={`${td} font-mono`}>{d.version_label}</td>
                 <td className={`${td} font-mono`}>{d.effective_from ?? ""}</td>
                 <td className={`${td} font-mono`}>{d.pages ?? ""}</td>
-                <td className={`${td} font-mono ${d.status === "failed" ? "text-danger" : ""}`}>
+                <td className={`${td} font-mono ${d.status === "failed" ? "text-danger" : d.status === "superseded" ? "text-muted" : ""}`}>
                   {d.status}
+                  {d.status === "superseded" && d.effective_to ? ` on ${d.effective_to}` : ""}
                   {d.failed_stage ? ` (${d.failed_stage})` : ""}
                 </td>
               </tr>
