@@ -47,6 +47,34 @@ export type SearchHit = {
   kept: boolean;
 };
 
+export type Scan = {
+  id: string;
+  status: "queued" | "running" | "done" | "failed";
+  started_at: string | null;
+  finished_at: string | null;
+  judge_calls: number;
+  tokens: number;
+  stats: Record<string, number> | null;
+  error: string | null;
+  settings: Record<string, string | number>;
+};
+
+export type FindingSide = { title: string; version_label: string; heading_path: string | null; page: number | null };
+
+export type Finding = {
+  id: string;
+  type: string;
+  status: string;
+  confidence: number;
+  explanation: string;
+  quote_a: string;
+  quote_b: string;
+  owner: string | null;
+  a: FindingSide;
+  b: FindingSide;
+  scores: Record<string, number | string | boolean | null>;
+};
+
 export type Chunk = {
   position: number;
   kind: "text" | "table" | "figure";
@@ -135,6 +163,9 @@ export const api = {
   search: (query: string) =>
     request<SearchHit[]>("/search", { method: "POST", body: JSON.stringify({ query }) }),
   related: (chunkId: string) => request<SearchHit[]>(`/chunks/${chunkId}/related`),
+  startScan: (id: string) => request<Scan>(`/versions/${id}/scan`, { method: "POST" }),
+  scans: (id: string) => request<Scan[]>(`/versions/${id}/scans`),
+  findings: () => request<Finding[]>("/findings"),
   fileUrl: (id: string) => `/api/versions/${id}/file`,
 
   samplesAvailable: () =>

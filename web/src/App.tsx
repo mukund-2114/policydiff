@@ -6,6 +6,7 @@ import { AnswerKey } from "./pages/AnswerKey";
 import { Compare } from "./pages/Compare";
 import { DocumentDetail } from "./pages/DocumentDetail";
 import { Documents } from "./pages/Documents";
+import { Findings } from "./pages/Findings";
 import { Search } from "./pages/Search";
 import { SampleCompare } from "./pages/SampleCompare";
 import { SampleViewer } from "./pages/SampleViewer";
@@ -104,6 +105,8 @@ function Shell({ user }: { user: User }) {
         <Samples />
       ) : page === "sample-compare" ? (
         <SampleCompare />
+      ) : page === "findings" ? (
+        <Findings />
       ) : page === "search" ? (
         <Search />
       ) : page === "compare" ? (

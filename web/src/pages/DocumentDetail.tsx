@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, type Chunk, type ParsedPage, type Stage, type User } from "../api";
+import { api, type Chunk, type ParsedPage, type Scan, type Stage, type User } from "../api";
 import { go } from "../router";
 import { PipelineStepper } from "../components/PipelineStepper";
 import { button, formatDuration, panel, td, th } from "../ui";
@@ -186,6 +186,50 @@ function ParsedView({ id }: { id: string }) {
   );
 }
 
+const SCAN_ACTIVE = ["queued", "running"];
+
+// Starts a conflict scan of this version and shows how the latest one is going.
+function ScanBar({ id, ready, canScan }: { id: string; ready: boolean; canScan: boolean }) {
+  const qc = useQueryClient();
+  const scans = useQuery({
+    queryKey: ["scans", id],
+    queryFn: () => api.scans(id),
+    refetchInterval: (q) => (q.state.data?.some((s: Scan) => SCAN_ACTIVE.includes(s.status)) ? 3000 : false),
+  });
+  const start = useMutation({
+    mutationFn: () => api.startScan(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["scans", id] }),
+  });
+  const latest = scans.data?.[0];
+  const running = latest ? SCAN_ACTIVE.includes(latest.status) : false;
+  const s = latest?.stats;
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-3">
+      {canScan && (
+        <button className={button} disabled={!ready || running || start.isPending} onClick={() => start.mutate()}>
+          Scan for conflicts
+        </button>
+      )}
+      {latest && (
+        <p className="text-muted">
+          Last scan: {latest.status}
+          {running && `, ${latest.judge_calls} pairs judged so far`}
+          {s && `. ${s.clauses} clauses, ${s.judged} pairs judged, ${s.cached} already judged, ${s.findings} findings`}
+          {s && s.unverified > 0 && `, ${s.unverified} dropped (quote not in the text)`}
+          {s && s.failed > 0 && `, ${s.failed} pairs failed`}
+          {latest.error && `. ${latest.error}`}
+        </p>
+      )}
+      {latest?.status === "done" && (
+        <a className="text-accent hover:underline" href="#/findings">
+          See findings
+        </a>
+      )}
+      {start.isError && <p className="text-danger">{(start.error as Error).message}</p>}
+    </div>
+  );
+}
+
 export function DocumentDetail({ id, user }: { id: string; user: User }) {
   const qc = useQueryClient();
   const remove = useMutation({
@@ -258,6 +302,7 @@ export function DocumentDetail({ id, user }: { id: string; user: User }) {
       <div className="mb-4">
         <PipelineStepper v={d} onOpenTab={setTab} />
       </div>
+      <ScanBar id={id} ready={d.status === "ready"} canScan={user.role === "admin" || user.role === "reviewer"} />
       <div className={`grid gap-4 ${showPdf ? "lg:grid-cols-2" : ""}`}>
         {showPdf && (
           <iframe
