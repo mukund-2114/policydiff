@@ -119,6 +119,9 @@ def run_scan(
     ).all()
     for chunk in chunks:
         stats.clauses += 1
+        # The page reads this while the scan runs to draw its progress bar. finish() replaces it.
+        scan.settings_snapshot = {"progress": {"clause": stats.clauses, "of": len(chunks)}}
+        db.commit()
         text = embedding_input(chunk.context_header, chunk.text, chunk.summary)
         hits = hybrid_search(db, scan.workspace_id, text, chunk.embedding, version.id)
         for hit in funnel.apply_funnel(text, hits, reranker):

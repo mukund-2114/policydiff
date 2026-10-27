@@ -188,6 +188,28 @@ function ParsedView({ id }: { id: string }) {
 
 const SCAN_ACTIVE = ["queued", "running"];
 
+// A spinner, a bar and a line of numbers, so a running scan is visibly doing something.
+// The scan does not know how many pairs it will judge, so the bar counts clauses instead.
+function ScanProgress({ scan }: { scan?: Scan }) {
+  const p = scan?.progress;
+  const pct = p ? Math.round(((p.clause - 1) / p.of) * 100) : 0;
+  return (
+    <div className="flex min-w-64 flex-1 items-center gap-3" role="status">
+      <span className="h-4 w-4 animate-spin rounded-full border-2 border-border border-t-accent" />
+      <div className="flex-1">
+        <div className="h-2 overflow-hidden rounded bg-border">
+          <div className="h-full bg-accent transition-all" style={{ width: `${pct}%` }} />
+        </div>
+        <p className="mt-1 text-muted">
+          {p
+            ? `Checking clause ${p.clause} of ${p.of}. ${scan?.judge_calls ?? 0} pairs judged so far.`
+            : "Starting the scan..."}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // Starts a conflict scan of this version and shows how the latest one is going.
 function ScanBar({ id, ready, canScan }: { id: string; ready: boolean; canScan: boolean }) {
   const qc = useQueryClient();
@@ -207,13 +229,13 @@ function ScanBar({ id, ready, canScan }: { id: string; ready: boolean; canScan: 
     <div className="mb-4 flex flex-wrap items-center gap-3">
       {canScan && (
         <button className={button} disabled={!ready || running || start.isPending} onClick={() => start.mutate()}>
-          Scan for conflicts
+          {running || start.isPending ? "Scanning..." : "Scan for conflicts"}
         </button>
       )}
-      {latest && (
+      {(running || start.isPending) && <ScanProgress scan={running ? latest : undefined} />}
+      {latest && !running && (
         <p className="text-muted">
           Last scan: {latest.status}
-          {running && `, ${latest.judge_calls} pairs judged so far`}
           {s && `. ${s.clauses} clauses, ${s.judged} pairs judged, ${s.cached} already judged, ${s.findings} findings`}
           {s && s.unverified > 0 && `, ${s.unverified} dropped (quote not in the text)`}
           {s && s.failed > 0 && `, ${s.failed} pairs failed`}

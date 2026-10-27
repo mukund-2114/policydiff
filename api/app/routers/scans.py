@@ -26,6 +26,7 @@ class ScanOut(BaseModel):
     judge_calls: int
     tokens: int
     stats: dict | None  # counts: clauses, candidates, cached, judged, findings, unverified, failed
+    progress: dict | None  # while running: which clause of how many
     error: str | None
     settings: dict  # the models and numbers this scan ran with
 
@@ -40,6 +41,7 @@ def _scan_out(s: Scan) -> ScanOut:
         judge_calls=s.judge_calls,
         tokens=s.tokens,
         stats=snap.pop("stats", None),
+        progress=snap.pop("progress", None),
         error=snap.pop("error", None),
         settings=snap,
     )

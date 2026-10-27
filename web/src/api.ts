@@ -55,6 +55,7 @@ export type Scan = {
   judge_calls: number;
   tokens: number;
   stats: Record<string, number> | null;
+  progress: { clause: number; of: number } | null;
   error: string | null;
   settings: Record<string, string | number>;
 };
