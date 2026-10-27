@@ -1,4 +1,4 @@
-"""Try the hybrid search by hand. The scan (S8) will call the same function for every clause."""
+"""Try the funnel by hand: hybrid search, then rerank and MMR. The scan (S8) runs the same steps."""
 
 import uuid
 
@@ -10,8 +10,10 @@ from sqlalchemy.orm import Session
 from app import auth
 from app.db.session import get_db
 from app.models import Chunk, User
+from app.pipeline.embed import embedding_input
 from app.providers.base import ProviderError
-from app.providers.registry import get_embedder
+from app.providers.registry import get_embedder, get_reranker
+from app.retrieval.funnel import apply_funnel
 from app.retrieval.search import hybrid_search
 
 router = APIRouter(tags=["search"])
@@ -34,6 +36,8 @@ class HitOut(BaseModel):
     score: float  # the RRF score
     vector_rank: int | None  # place in the search by meaning, empty if it was not in the top 25
     keyword_rank: int | None  # place in the search by words, empty if it was not in the top 25
+    rerank_score: float  # 0 to 1, how closely the hit addresses the same rule as the query
+    kept: bool  # true for the few hits that would go on to the judge
 
 
 def _out(hits: list[dict]) -> list[HitOut]:
@@ -49,9 +53,18 @@ def _out(hits: list[dict]) -> list[HitOut]:
             score=h["score"],
             vector_rank=h["vector_rank"],
             keyword_rank=h["keyword_rank"],
+            rerank_score=h["rerank_score"],
+            kept=h["kept"],
         )
         for h in hits
     ]
+
+
+def _rerank(source_text: str, hits: list[dict]) -> list[dict]:
+    try:
+        return apply_funnel(source_text, hits, get_reranker())
+    except ProviderError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
 
 
 @router.post("/search", response_model=list[HitOut])
@@ -65,7 +78,8 @@ def search(
         vector = get_embedder().embed([body.query])[0]
     except ProviderError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
-    return _out(hybrid_search(db, user.workspace_id, body.query, vector, body.exclude_version_id))
+    hits = hybrid_search(db, user.workspace_id, body.query, vector, body.exclude_version_id)
+    return _out(_rerank(body.query, hits))
 
 
 @router.get("/chunks/{chunk_id}/related", response_model=list[HitOut])
@@ -85,5 +99,6 @@ def related(
         raise HTTPException(status_code=404, detail="Chunk not found")
     if chunk.embedding is None:
         raise HTTPException(status_code=409, detail="This chunk has no vector yet")
-    text = f"{chunk.context_header or ''} {chunk.text}"
-    return _out(hybrid_search(db, user.workspace_id, text, chunk.embedding, chunk.version_id))
+    text = embedding_input(chunk.context_header, chunk.text, chunk.summary)
+    hits = hybrid_search(db, user.workspace_id, text, chunk.embedding, chunk.version_id)
+    return _out(_rerank(text, hits))
