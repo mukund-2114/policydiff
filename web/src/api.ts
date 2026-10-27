@@ -71,6 +71,7 @@ export type Finding = {
   quote_a: string;
   quote_b: string;
   owner: string | null;
+  resolution_note: string | null;
   a: FindingSide;
   b: FindingSide;
   scores: Record<string, number | string | boolean | null>;
@@ -167,6 +168,8 @@ export const api = {
   startScan: (id: string) => request<Scan>(`/versions/${id}/scan`, { method: "POST" }),
   scans: (id: string) => request<Scan[]>(`/versions/${id}/scans`),
   findings: () => request<Finding[]>("/findings"),
+  updateFinding: (id: string, changes: Partial<Pick<Finding, "status" | "owner" | "resolution_note">>) =>
+    request<Finding>(`/findings/${id}`, { method: "PATCH", body: JSON.stringify(changes) }),
   fileUrl: (id: string) => `/api/versions/${id}/file`,
 
   samplesAvailable: () =>

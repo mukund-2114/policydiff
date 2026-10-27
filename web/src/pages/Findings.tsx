@@ -1,10 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Finding, type FindingSide } from "../api";
-import { panel } from "../ui";
+import { button, field, panel, primary } from "../ui";
 
-// A plain list of what the scans found, most confident first. The review queue (S9) replaces this
-// with filters, keyboard shortcuts and side-by-side PDFs. For now it lets you read each finding and
-// check that both quotes really are in the clauses.
+// The review queue. The list on the left is filtered by status and type, the finding you pick opens
+// on the right. Keys: j and k move, c confirms, d dismisses, r marks resolved, o reopens. They are
+// ignored while you type in a box, so writing a reason does not dismiss anything.
+// The side-by-side PDF pages with the quote highlighted come in S9b.
 
 const TYPE = {
   numeric_mismatch: "Numbers differ",
@@ -13,6 +15,11 @@ const TYPE = {
   definition_mismatch: "Definitions differ",
   outdated_reference: "Outdated reference",
 } as Record<string, string>;
+
+const STATUS = ["open", "confirmed", "dismissed", "resolved"];
+
+// key -> the status it sets
+const KEYS: Record<string, string> = { c: "confirmed", d: "dismissed", r: "resolved", o: "open" };
 
 function Side({ label, side, quote }: { label: string; side: FindingSide; quote: string }) {
   return (
@@ -26,33 +33,127 @@ function Side({ label, side, quote }: { label: string; side: FindingSide; quote:
   );
 }
 
+function Detail({ f, onDecide, busy }: { f: Finding; onDecide: (status: string, note: string) => void; busy: boolean }) {
+  const [note, setNote] = useState("");
+  useEffect(() => setNote(f.resolution_note ?? ""), [f.id, f.resolution_note]);
+  return (
+    <div className={`${panel} space-y-4 p-4`}>
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <span className="font-medium">{TYPE[f.type] ?? f.type}</span>
+        <span className="text-muted">confidence {(f.confidence * 100).toFixed(0)}%</span>
+        {f.owner && <span className="text-muted">suggested owner {f.owner}</span>}
+        <span className="ml-auto text-muted">{f.status}</span>
+      </div>
+      <p>{f.explanation}</p>
+      <div className="grid gap-3 md:grid-cols-2">
+        <Side label="A" side={f.a} quote={f.quote_a} />
+        <Side label="B" side={f.b} quote={f.quote_b} />
+      </div>
+      <input
+        className={field}
+        placeholder="Reason or note (optional)"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+      />
+      <div className="flex flex-wrap gap-2">
+        <button className={primary} disabled={busy} onClick={() => onDecide("confirmed", note)}>
+          Confirm (c)
+        </button>
+        <button className={button} disabled={busy} onClick={() => onDecide("dismissed", note)}>
+          Dismiss (d)
+        </button>
+        <button className={button} disabled={busy} onClick={() => onDecide("resolved", note)}>
+          Mark resolved (r)
+        </button>
+        <button className={button} disabled={busy || f.status === "open"} onClick={() => onDecide("open", note)}>
+          Reopen (o)
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function Findings() {
+  const qc = useQueryClient();
+  const [status, setStatus] = useState("open");
+  const [type, setType] = useState("");
+  const [index, setIndex] = useState(0);
+
   const findings = useQuery({ queryKey: ["findings"], queryFn: api.findings });
-  const rows = findings.data ?? [];
+  const all = findings.data ?? [];
+  const rows = all.filter((f) => (!status || f.status === status) && (!type || f.type === type));
+  const current: Finding | undefined = rows[Math.min(index, rows.length - 1)];
+
+  const decide = useMutation({
+    mutationFn: (v: { id: string; status: string; note: string }) =>
+      api.updateFinding(v.id, { status: v.status, resolution_note: v.note || null }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["findings"] }),
+  });
+  const act = (f: Finding, next: string, note = "") => decide.mutate({ id: f.id, status: next, note });
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement;
+      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT") return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === "j") setIndex((i) => Math.min(i + 1, rows.length - 1));
+      else if (e.key === "k") setIndex((i) => Math.max(i - 1, 0));
+      else if (KEYS[e.key] && current && !decide.isPending) act(current, KEYS[e.key]);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 px-4 py-6">
+    <div className="mx-auto max-w-6xl space-y-4 px-4 py-6">
       <h1 className="text-lg font-semibold">Findings</h1>
-      {findings.isSuccess && rows.length === 0 && (
+      <div className="flex flex-wrap items-center gap-3">
+        <select className={`${field} w-44`} value={status} onChange={(e) => (setStatus(e.target.value), setIndex(0))}>
+          <option value="">All statuses</option>
+          {STATUS.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+        <select className={`${field} w-56`} value={type} onChange={(e) => (setType(e.target.value), setIndex(0))}>
+          <option value="">All types</option>
+          {Object.entries(TYPE).map(([k, v]) => (
+            <option key={k} value={k}>
+              {v}
+            </option>
+          ))}
+        </select>
+        <p className="text-muted">{rows.length} shown. j and k move, c confirms, d dismisses, r resolves.</p>
+      </div>
+      {findings.isSuccess && all.length === 0 && (
         <p className="text-muted">No findings yet. Open a document and press Scan for conflicts.</p>
       )}
-      <ol className="space-y-3">
-        {rows.map((f: Finding) => (
-          <li key={f.id} className={`${panel} space-y-3 p-4`}>
-            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-              <span className="font-medium">{TYPE[f.type] ?? f.type}</span>
-              <span className="text-muted">confidence {(f.confidence * 100).toFixed(0)}%</span>
-              {f.owner && <span className="text-muted">suggested owner {f.owner}</span>}
-              <span className="ml-auto text-muted">{f.status}</span>
-            </div>
-            <p>{f.explanation}</p>
-            <div className="grid gap-3 md:grid-cols-2">
-              <Side label="A" side={f.a} quote={f.quote_a} />
-              <Side label="B" side={f.b} quote={f.quote_b} />
-            </div>
-          </li>
-        ))}
-      </ol>
+      {findings.isSuccess && all.length > 0 && rows.length === 0 && (
+        <p className="text-muted">Nothing matches these filters. Choose All statuses to see decided findings.</p>
+      )}
+      {decide.isError && <p className="text-danger">{(decide.error as Error).message}</p>}
+      {rows.length > 0 && (
+        <div className="grid gap-4 lg:grid-cols-[22rem_1fr]">
+          <ol className={`${panel} max-h-[70vh] divide-y divide-border overflow-y-auto`}>
+            {rows.map((f, i) => (
+              <li key={f.id}>
+                <button
+                  className={`block w-full px-3 py-2 text-left hover:bg-bg ${f === current ? "bg-bg" : ""}`}
+                  onClick={() => setIndex(i)}
+                >
+                  <span className="font-medium">{TYPE[f.type] ?? f.type}</span>
+                  <span className="ml-2 text-muted">{(f.confidence * 100).toFixed(0)}%</span>
+                  <span className="block truncate text-muted">
+                    {f.a.title} / {f.b.title}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ol>
+          {current && <Detail f={current} busy={decide.isPending} onDecide={(s, n) => act(current, s, n)} />}
+        </div>
+      )}
     </div>
   );
 }
