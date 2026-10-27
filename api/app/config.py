@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     embed_dims: int = 1536
     openai_api_key: str = ""
     anthropic_api_key: str = ""
+    cohere_api_key: str = ""
+    model_cache_dir: str = ""  # where the local reranker keeps its downloaded model
     session_max_age_seconds: int = 60 * 60 * 12
     cookie_secure: bool = False  # set true when served over HTTPS
     storage_backend: str = "local"  # "local" (a folder) or "s3" (any S3-compatible bucket)

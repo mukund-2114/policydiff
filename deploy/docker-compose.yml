@@ -8,6 +8,10 @@ x-api-env: &api-env
   ADMIN_PASSWORD: ${ADMIN_PASSWORD}
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  COHERE_API_KEY: ${COHERE_API_KEY:-}
+  # The local reranker downloads its model here once. The folder is the "models" volume.
+  MODEL_CACHE_DIR: /data/models
+  HF_HOME: /tmp/hf  # the downloader's scratch space; the container root is read-only
   EMBED_DIMS: ${EMBED_DIMS:-1536}
   MODELS_CONFIG: /config/models.yaml
   # "local" keeps files in the "files" volume. "s3" uses the bucket named by the S3_* settings.
@@ -42,6 +46,7 @@ services:
     volumes:
       - ../models.yaml:/config/models.yaml:ro
       - files:/data/files
+      - models:/data/models
       # Demo documents, read-only. Remove this line to switch the sample features off.
       - ../evals/northwind:/samples:ro
     depends_on:
@@ -68,6 +73,7 @@ services:
     volumes:
       - ../models.yaml:/config/models.yaml:ro
       - files:/data/files
+      - models:/data/models
     depends_on:
       api:
         condition: service_healthy
@@ -90,3 +96,4 @@ services:
 volumes:
   pgdata:
   files:
+  models:

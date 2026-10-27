@@ -11,11 +11,16 @@ from pydantic import BaseModel
 from app.config import get_settings
 from app.providers.anthropic_adapter import AnthropicChat
 from app.providers.base import ChatModel, Embedder, ProviderError, Reranker
+from app.providers.cohere_rerank import CohereReranker
+from app.providers.local_rerank import LocalReranker
 from app.providers.ollama_adapter import OllamaChat, OllamaEmbedder
 from app.providers.openai_adapter import OpenAIChat, OpenAIEmbedder
 from app.providers.rerank import LLMReranker
 
-CLOUD_PROVIDERS = {"openai", "anthropic"}
+CLOUD_PROVIDERS = {"openai", "anthropic", "cohere"}
+
+
+DEFAULT_LOCAL_RERANKER = "Xenova/ms-marco-MiniLM-L-6-v2"  # about 80 MB
 
 
 class ChatCfg(BaseModel):
@@ -32,7 +37,8 @@ class EmbedCfg(BaseModel):
 
 
 class RerankCfg(BaseModel):
-    provider: Literal["llm"] = "llm"
+    provider: Literal["llm", "local", "cohere"] = "llm"
+    model: str | None = None  # local and cohere only; each has a default
 
 
 class EgressCfg(BaseModel):
@@ -72,6 +78,8 @@ def check_egress(cfg: ModelsConfig) -> None:
                 f"egress.allow_cloud is false but {name} uses {part.provider}"
                 f" at {part.base_url or 'a public endpoint'}"
             )
+    if cfg.rerank.provider == "cohere":  # the other rerankers run here or use the chat model
+        raise ProviderError("egress.allow_cloud is false but rerank uses cohere")
 
 
 @lru_cache
@@ -108,4 +116,9 @@ def get_embedder() -> Embedder:
 
 
 def get_reranker() -> Reranker:
+    r, s = load_config().rerank, get_settings()
+    if r.provider == "local":
+        return LocalReranker(r.model or DEFAULT_LOCAL_RERANKER, s.model_cache_dir or None)
+    if r.provider == "cohere":
+        return CohereReranker(r.model or "rerank-v3.5", s.cohere_api_key)
     return LLMReranker(get_chat())

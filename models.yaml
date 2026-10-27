@@ -7,8 +7,10 @@ embed:
   provider: openai
   model: text-embedding-3-small
   dims: 1536
+# local: a small cross-encoder that runs in the container, nothing is sent out (downloads once).
+# llm: the chat model scores all candidates in one call. cohere: hosted Cohere Rerank (needs COHERE_API_KEY).
 rerank:
-  provider: llm
+  provider: local
 vision:
   provider: openai
   model: gpt-5-mini

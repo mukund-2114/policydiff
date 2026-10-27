@@ -23,6 +23,7 @@ dependencies = [
     "pymupdf<2",
     "python-multipart>=0.0.32",
     "boto3",
+    "fastembed>=0.9.1",
 ]
 
 [dependency-groups]
