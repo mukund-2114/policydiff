@@ -96,7 +96,7 @@ function Shell({ user }: { user: User }) {
       />
       <div className="min-w-0 flex-1">
       {page === "documents" && path[1] ? (
-        <DocumentDetail id={path[1]} />
+        <DocumentDetail id={path[1]} user={user} />
       ) : page === "samples" && path[1] ? (
         <SampleViewer id={path[1]} />
       ) : page === "samples" ? (

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, type Chunk, type ParsedPage, type Stage } from "../api";
+import { api, type Chunk, type ParsedPage, type Stage, type User } from "../api";
+import { go } from "../router";
 import { PipelineStepper } from "../components/PipelineStepper";
 import { button, formatDuration, panel, td, th } from "../ui";
 
@@ -185,7 +186,15 @@ function ParsedView({ id }: { id: string }) {
   );
 }
 
-export function DocumentDetail({ id }: { id: string }) {
+export function DocumentDetail({ id, user }: { id: string; user: User }) {
+  const qc = useQueryClient();
+  const remove = useMutation({
+    mutationFn: () => api.remove(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["documents"] });
+      go("#/documents");
+    },
+  });
   const [tab, setTab] = useState<"pipeline" | "chunks" | "parsed">("pipeline");
   // Hiding the PDF gives the tabs the full width. The choice is remembered between visits.
   const [showPdf, setShowPdf] = useState(() => {
@@ -235,7 +244,17 @@ export function DocumentDetail({ id }: { id: string }) {
         <a className={button} href={`#/compare?a=${d.id}`}>
           Compare with another
         </a>
+        {user.role === "admin" && (
+          <button
+            className={`${button} text-danger`}
+            disabled={remove.isPending}
+            onClick={() => window.confirm(`Delete ${d.title} v${d.version_label}? This removes its file, chunks and findings.`) && remove.mutate()}
+          >
+            Delete
+          </button>
+        )}
       </div>
+      {remove.isError && <p className="mb-2 text-danger">{(remove.error as Error).message}</p>}
       <div className="mb-4">
         <PipelineStepper v={d} onOpenTab={setTab} />
       </div>

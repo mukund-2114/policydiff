@@ -32,6 +32,10 @@ class Storage(Protocol):
 
     def exists(self, key: str) -> bool: ...
 
+    def delete(self, key: str) -> None:
+        """Remove the file. A file that is already gone is not an error."""
+        ...
+
 
 class LocalStorage:
     """A folder on disk. The default, and what the unit tests use."""
@@ -63,6 +67,9 @@ class LocalStorage:
 
     def exists(self, key: str) -> bool:
         return self._path(key).is_file()
+
+    def delete(self, key: str) -> None:
+        self._path(key).unlink(missing_ok=True)
 
 
 class S3Storage:
@@ -108,6 +115,9 @@ class S3Storage:
                 return False
             raise  # a permissions or network problem should not look like "file missing"
         return True
+
+    def delete(self, key: str) -> None:
+        self.client.delete_object(Bucket=self.bucket, Key=key)  # S3 does not mind a missing key
 
 
 @lru_cache

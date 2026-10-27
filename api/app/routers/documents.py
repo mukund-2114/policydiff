@@ -1,6 +1,7 @@
 """Upload, list and inspect documents. Everything the Documents pages in the web app call."""
 
 import json
+import logging
 import uuid
 from datetime import date, datetime
 from urllib.parse import quote
@@ -8,18 +9,28 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from app import auth
 from app.config import get_settings
 from app.db.session import get_db
 from app.jobs import enqueue_chunk, enqueue_embed, enqueue_parse
-from app.models import Chunk, Collection, Document, DocumentVersion, User, VersionStage
+from app.models import (
+    Chunk,
+    Collection,
+    Document,
+    DocumentVersion,
+    Finding,
+    PairJudgment,
+    User,
+    VersionStage,
+)
 from app.pipeline.parse import simplify
 from app.services.ingest import UploadError, register_upload
 from app.storage import get_storage
 
+log = logging.getLogger(__name__)
 router = APIRouter(tags=["documents"])
 
 
@@ -269,3 +280,59 @@ def reembed(
         raise HTTPException(status_code=409, detail="This version has no chunks yet")
     enqueue_embed(v.id)
     return {"queued": True}
+
+
+BUSY = ("queued", "parsing", "parsed", "chunking", "chunked", "embedding")
+
+
+@router.delete("/versions/{version_id}", status_code=204)
+def delete_version(
+    version_id: uuid.UUID,
+    user: User = Depends(auth.require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Remove one version: its chunks, stage log, findings that rest on it, and its stored files.
+
+    If it was the current version, the newest superseded one becomes current again. When the last
+    version of a document goes, the document goes too.
+    """
+    v, d, _ = _get_version(db, user, version_id)
+    if v.status in BUSY:
+        raise HTTPException(status_code=409, detail="Wait until processing has finished.")
+    keys = [k for k in (v.file_path, v.parsed_json_path) if k]
+    chunk_ids = list(db.scalars(select(Chunk.id).where(Chunk.version_id == v.id)))
+    if chunk_ids:  # findings and judgments point at chunks, so they go first
+        judgments = select(PairJudgment.id).where(
+            or_(PairJudgment.chunk_a.in_(chunk_ids), PairJudgment.chunk_b.in_(chunk_ids))
+        )
+        db.execute(delete(Finding).where(Finding.judgment_id.in_(judgments)))
+        db.execute(
+            delete(PairJudgment).where(
+                or_(PairJudgment.chunk_a.in_(chunk_ids), PairJudgment.chunk_b.in_(chunk_ids))
+            )
+        )
+    db.execute(delete(Chunk).where(Chunk.version_id == v.id))
+    db.execute(delete(VersionStage).where(VersionStage.version_id == v.id))
+    others = db.scalars(
+        select(DocumentVersion)
+        .where(DocumentVersion.document_id == v.document_id, DocumentVersion.id != v.id)
+        .order_by(
+            DocumentVersion.effective_from.desc().nulls_last(), DocumentVersion.created_at.desc()
+        )
+    ).all()
+    if v.status == "ready":  # the current version is going, so bring back the one before it
+        previous = next((o for o in others if o.status == "superseded"), None)
+        if previous:
+            previous.status, previous.effective_to = "ready", None
+    auth.audit(db, user, v.workspace_id, "document_delete", version_id=str(v.id), title=d.title)
+    db.delete(v)
+    db.flush()  # the version must be gone before its document can be
+    if not others:
+        db.delete(d)
+    db.commit()
+    storage = get_storage()
+    for key in keys:  # after the commit, so a storage problem cannot leave a broken row behind
+        try:
+            storage.delete(key)
+        except Exception:  # noqa: BLE001
+            log.exception("could not remove stored file %s", key)

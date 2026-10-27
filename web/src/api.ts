@@ -114,6 +114,7 @@ export const api = {
   chunks: (id: string) => request<Chunk[]>(`/versions/${id}/chunks`),
   rechunk: (id: string) => request<{ queued: boolean }>(`/versions/${id}/chunk`, { method: "POST" }),
   reembed: (id: string) => request<{ queued: boolean }>(`/versions/${id}/embed`, { method: "POST" }),
+  remove: (id: string) => request<void>(`/versions/${id}`, { method: "DELETE" }),
   reparse: (id: string) => request<{ queued: boolean }>(`/versions/${id}/parse`, { method: "POST" }),
   upload: (form: FormData) => request<UploadResult>("/documents/upload", { method: "POST", body: form }),
   fileUrl: (id: string) => `/api/versions/${id}/file`,

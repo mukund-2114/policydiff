@@ -76,3 +76,11 @@ def test_s3_storage_does_not_hide_other_errors():
     store.client = client
     with pytest.raises(ClientError):
         store.exists("x")
+
+
+def test_local_storage_delete_removes_the_file_and_ignores_a_missing_one(tmp_path):
+    store = LocalStorage(str(tmp_path))
+    store.put("a.txt", b"x")
+    store.delete("a.txt")
+    assert not store.exists("a.txt")
+    store.delete("a.txt")  # already gone: no error
