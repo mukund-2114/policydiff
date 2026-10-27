@@ -32,6 +32,19 @@ export type Stage = {
   error: string | null;
 };
 
+export type SearchHit = {
+  chunk_id: string;
+  version_id: string;
+  title: string;
+  version_label: string;
+  heading_path: string | null;
+  page: number | null;
+  text: string;
+  score: number;
+  vector_rank: number | null;
+  keyword_rank: number | null;
+};
+
 export type Chunk = {
   position: number;
   kind: "text" | "table" | "figure";
@@ -117,6 +130,9 @@ export const api = {
   remove: (id: string) => request<void>(`/versions/${id}`, { method: "DELETE" }),
   reparse: (id: string) => request<{ queued: boolean }>(`/versions/${id}/parse`, { method: "POST" }),
   upload: (form: FormData) => request<UploadResult>("/documents/upload", { method: "POST", body: form }),
+  search: (query: string) =>
+    request<SearchHit[]>("/search", { method: "POST", body: JSON.stringify({ query }) }),
+  related: (chunkId: string) => request<SearchHit[]>(`/chunks/${chunkId}/related`),
   fileUrl: (id: string) => `/api/versions/${id}/file`,
 
   samplesAvailable: () =>

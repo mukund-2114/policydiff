@@ -30,6 +30,7 @@ const icons = {
   compare: <Icon d="M8 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3M16 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3M12 2v20" />,
   samples: <Icon d="M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14l-4-3H6a2 2 0 0 1-2-2zM8 8h8M8 12h5" />,
   key: <Icon d="M21 2l-2 2m-7.6 7.6a5.5 5.5 0 1 1-7.8 7.8 5.5 5.5 0 0 1 7.8-7.8zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />,
+  search: <Icon d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-4.3-4.3" />,
   status: <Icon d="M22 12h-4l-3 9L9 3l-3 9H2" />,
 };
 
@@ -87,6 +88,7 @@ export function Nav({
 }) {
   const workspace: Item[] = [
     { key: "documents", label: "Documents", icon: icons.documents },
+    { key: "search", label: "Search", icon: icons.search },
     { key: "compare", label: "Compare", icon: icons.compare },
   ];
   const reference: Item[] = showSamples
