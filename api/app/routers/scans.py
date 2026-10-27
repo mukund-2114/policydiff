@@ -1,4 +1,4 @@
-"""Start a conflict scan, follow it, and list what it found. The review queue (S9) uses this."""
+"""Start a conflict scan of one version and follow how it is going."""
 
 import uuid
 from datetime import datetime
@@ -6,12 +6,12 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import Session
 
 from app import auth
 from app.db.session import get_db
 from app.jobs import enqueue_scan
-from app.models import Chunk, Document, DocumentVersion, Finding, PairJudgment, Scan, User
+from app.models import DocumentVersion, Scan, User
 
 router = APIRouter(tags=["scans"])
 
@@ -100,73 +100,3 @@ def version_scans(
         .limit(5)
     )
     return [_scan_out(s) for s in rows]
-
-
-class SideOut(BaseModel):
-    title: str
-    version_label: str
-    heading_path: str | None
-    page: int | None
-
-
-class FindingOut(BaseModel):
-    id: str
-    type: str
-    status: str
-    confidence: float
-    explanation: str
-    quote_a: str
-    quote_b: str
-    owner: str | None
-    a: SideOut
-    b: SideOut
-    scores: dict  # how the pair got here: ranks, rerank score, judge confidence
-
-
-@router.get("/findings", response_model=list[FindingOut])
-def findings(
-    user: User = Depends(auth.current_user),
-    db: Session = Depends(get_db),
-):
-    """All findings, most confident first."""
-    ca, cb = aliased(Chunk), aliased(Chunk)
-    va, vb = aliased(DocumentVersion), aliased(DocumentVersion)
-    da, dbb = aliased(Document), aliased(Document)
-    rows = db.execute(
-        select(Finding, PairJudgment, ca, cb, va, vb, da, dbb)
-        .join(PairJudgment, PairJudgment.id == Finding.judgment_id)
-        .join(ca, ca.id == PairJudgment.chunk_a)
-        .join(cb, cb.id == PairJudgment.chunk_b)
-        .join(va, va.id == ca.version_id)
-        .join(vb, vb.id == cb.version_id)
-        .join(da, da.id == va.document_id)
-        .join(dbb, dbb.id == vb.document_id)
-        .where(Finding.workspace_id == user.workspace_id)
-        .order_by(Finding.confidence.desc())
-    ).all()
-    return [
-        FindingOut(
-            id=str(f.id),
-            type=f.type,
-            status=f.status,
-            confidence=f.confidence,
-            explanation=f.explanation,
-            quote_a=f.quote_a,
-            quote_b=f.quote_b,
-            owner=f.owner,
-            a=SideOut(
-                title=d1.title,
-                version_label=v1.version_label,
-                heading_path=c1.heading_path,
-                page=c1.page,
-            ),
-            b=SideOut(
-                title=d2.title,
-                version_label=v2.version_label,
-                heading_path=c2.heading_path,
-                page=c2.page,
-            ),
-            scores=j.scores,
-        )
-        for f, j, c1, c2, v1, v2, d1, d2 in rows
-    ]
