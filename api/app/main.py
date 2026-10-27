@@ -8,7 +8,7 @@ from app.config import PRODUCT_NAME
 from app.db.session import get_engine
 from app.jobs import open_for_api
 from app.routers import auth as auth_router
-from app.routers import documents, health, samples, search
+from app.routers import documents, health, samples, scans, search
 
 
 @asynccontextmanager
@@ -25,3 +25,4 @@ app.include_router(auth_router.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
 app.include_router(samples.router, prefix="/api")
 app.include_router(search.router, prefix="/api")
+app.include_router(scans.router, prefix="/api")

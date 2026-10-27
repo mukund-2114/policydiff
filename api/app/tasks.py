@@ -1,9 +1,11 @@
 """Jobs the worker runs. One job per pipeline stage, so a failed stage can be retried alone."""
 
 import json
+import logging
 import tempfile
 import uuid
-from datetime import date
+from dataclasses import asdict
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from sqlalchemy import delete, func, select, update
@@ -12,14 +14,19 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db.session import get_engine
 from app.jobs import enqueue_chunk, enqueue_embed, queue
-from app.models import Chunk, Document, DocumentVersion
+from app.models import Chunk, Document, DocumentVersion, Scan
 from app.pipeline.chunk import chunk_pages, context_header
 from app.pipeline.embed import MAX_CHARS, embedding_input
+from app.pipeline.judge import PROMPT_VERSION
 from app.pipeline.parse import parse_pdf
 from app.pipeline.stages import run_stage
-from app.providers.registry import get_embedder
+from app.providers.registry import get_chat, get_embedder, get_reranker, load_config
+from app.retrieval.funnel import MAX_RERANKED, MMR_KEEP, MMR_LAMBDA, RELATED_THRESHOLD
+from app.services.scan import finish, run_scan
 from app.services.versions import plan_supersede
 from app.storage import get_storage, parsed_key
+
+log = logging.getLogger(__name__)
 
 
 @queue.task(name="parse_version")
@@ -138,3 +145,36 @@ def embed_version(version_id: str) -> None:
             for old, end in plan_supersede(version, list(others), date.today()):
                 old.status, old.effective_to = "superseded", end
             db.commit()
+
+
+@queue.task(name="scan_version")
+def scan_version(scan_id: str) -> None:
+    """Look for conflicts between every clause of one version and the rest of the library."""
+    with Session(get_engine()) as db:
+        scan = db.get(Scan, uuid.UUID(scan_id))
+        if scan is None or scan.status != "queued":
+            return
+        version = db.get(DocumentVersion, uuid.UUID(scan.scope.removeprefix("version:")))
+        scan.status, scan.started_at = "running", datetime.now(UTC)
+        db.commit()
+        cfg = load_config()
+        snapshot = {  # what this scan ran with, so a finding can be traced to it
+            "chat": f"{cfg.chat.provider}/{cfg.chat.model}",
+            "rerank": f"{cfg.rerank.provider}/{cfg.rerank.model or 'default'}",
+            "threshold": RELATED_THRESHOLD,
+            "max_reranked": MAX_RERANKED,
+            "mmr_lambda": MMR_LAMBDA,
+            "mmr_keep": MMR_KEEP,
+            "prompt_version": PROMPT_VERSION,
+        }
+        try:
+            stats = run_scan(db, scan, version, get_chat(), get_reranker())
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            log.exception("scan %s failed", scan_id)
+            finish(scan, "failed", {**snapshot, "error": f"{type(exc).__name__}: {exc}"[:500]})
+        else:
+            # A scan where the judge never answered is a failure, not an empty result.
+            ok = stats.failed == 0 or stats.judged > 0
+            finish(scan, "done" if ok else "failed", {**snapshot, "stats": asdict(stats)})
+        db.commit()
