@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Finding, type FindingSide } from "../api";
+import { PdfClause } from "../components/PdfClause";
 import { button, field, panel, primary } from "../ui";
 
 // The review queue. The list on the left is filtered by status and type, the finding you pick opens
 // on the right. Keys: j and k move, c confirms, d dismisses, r marks resolved, o reopens. They are
 // ignored while you type in a box, so writing a reason does not dismiss anything.
-// The side-by-side PDF pages with the quote highlighted come in S9b.
+// Under each quote is the PDF page the clause is on, with the clause marked.
 
 const TYPE = {
   numeric_mismatch: "Numbers differ",
@@ -29,12 +30,14 @@ function Side({ label, side, quote }: { label: string; side: FindingSide; quote:
         {side.page ? `, page ${side.page}` : ""}
       </p>
       <blockquote className="border-l-2 border-accent pl-3">{quote}</blockquote>
+      <PdfClause side={side} />
     </div>
   );
 }
 
 function Detail({ f, onDecide, busy }: { f: Finding; onDecide: (status: string, note: string) => void; busy: boolean }) {
   const [note, setNote] = useState("");
+  const [large, setLarge] = useState(false); // one page per row, so the text is readable
   useEffect(() => setNote(f.resolution_note ?? ""), [f.id, f.resolution_note]);
   return (
     <div className={`${panel} space-y-4 p-4`}>
@@ -45,7 +48,10 @@ function Detail({ f, onDecide, busy }: { f: Finding; onDecide: (status: string, 
         <span className="ml-auto text-muted">{f.status}</span>
       </div>
       <p>{f.explanation}</p>
-      <div className="grid gap-3 md:grid-cols-2">
+      <button className={button} onClick={() => setLarge(!large)}>
+        {large ? "Show pages side by side" : "Enlarge pages"}
+      </button>
+      <div className={`grid gap-3 ${large ? "" : "md:grid-cols-2"}`}>
         <Side label="A" side={f.a} quote={f.quote_a} />
         <Side label="B" side={f.b} quote={f.quote_b} />
       </div>

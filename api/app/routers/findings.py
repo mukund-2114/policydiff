@@ -15,11 +15,18 @@ from app.models import Chunk, Document, DocumentVersion, Finding, PairJudgment, 
 router = APIRouter(tags=["findings"])
 
 
+class BoxOut(BaseModel):
+    page: int
+    bbox: list[float]  # x0, y0, x1, y1 in PDF points, measured from the top left of the page
+
+
 class SideOut(BaseModel):
+    version_id: str
     title: str
     version_label: str
     heading_path: str | None
     page: int | None
+    boxes: list[BoxOut]  # where the clause sits on its pages, for the highlight
 
 
 class FindingOut(BaseModel):
@@ -64,6 +71,10 @@ def _select(workspace_id: uuid.UUID):
     return q
 
 
+def _boxes(chunk: Chunk) -> list[BoxOut]:
+    return [BoxOut(**b) for b in (chunk.bbox or {}).get("boxes", [])]
+
+
 def _out(row) -> FindingOut:
     f, j, c1, c2, v1, v2, d1, d2 = row
     return FindingOut(
@@ -77,16 +88,20 @@ def _out(row) -> FindingOut:
         owner=f.owner,
         resolution_note=f.resolution_note,
         a=SideOut(
+            version_id=str(v1.id),
             title=d1.title,
             version_label=v1.version_label,
             heading_path=c1.heading_path,
             page=c1.page,
+            boxes=_boxes(c1),
         ),
         b=SideOut(
+            version_id=str(v2.id),
             title=d2.title,
             version_label=v2.version_label,
             heading_path=c2.heading_path,
             page=c2.page,
+            boxes=_boxes(c2),
         ),
         scores=j.scores,
     )

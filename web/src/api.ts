@@ -60,7 +60,10 @@ export type Scan = {
   settings: Record<string, string | number>;
 };
 
-export type FindingSide = { title: string; version_label: string; heading_path: string | null; page: number | null };
+export type FindingSide = {
+  version_id: string;
+  boxes: { page: number; bbox: number[] }[];
+  title: string; version_label: string; heading_path: string | null; page: number | null };
 
 export type Finding = {
   id: string;
