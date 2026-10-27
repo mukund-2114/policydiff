@@ -43,6 +43,8 @@ export type SearchHit = {
   score: number;
   vector_rank: number | null;
   keyword_rank: number | null;
+  rerank_score: number;
+  kept: boolean;
 };
 
 export type Chunk = {

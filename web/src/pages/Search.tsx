@@ -8,6 +8,8 @@ import { button, field, panel, primary } from "../ui";
 //   - press "Find related" on a result, which does what the scan will do for each clause:
 //     use that clause as the query and leave out its own document version.
 // "Meaning" and "Words" are the place each hit held in the two searches, before they were merged.
+// "Related" is the reranker's score from 0 to 1. Hits marked "sent to judge" are the few that
+// survive the reranker threshold, the cap of 8 and MMR. The others are dimmed so the cut is visible.
 
 type Mode = { kind: "text"; query: string } | { kind: "related"; hit: SearchHit };
 
@@ -69,7 +71,7 @@ export function Search() {
 
       <ol className="space-y-3">
         {results.data?.map((h, i) => (
-          <li key={h.chunk_id} className={`${panel} space-y-2 p-3`}>
+          <li key={h.chunk_id} className={`${panel} space-y-2 p-3 ${h.kept ? "" : "opacity-60"}`}>
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <span className="text-muted">{i + 1}</span>
               <span className="font-medium">
@@ -82,7 +84,11 @@ export function Search() {
               <span className="ml-auto flex gap-3 text-xs">
                 <Rank label="Meaning" rank={h.vector_rank} />
                 <Rank label="Words" rank={h.keyword_rank} />
-                <span className="text-muted">score {h.score.toFixed(4)}</span>
+                <span className="text-muted">merge score {h.score.toFixed(4)}</span>
+                <span className={h.kept ? "text-accent" : "text-muted"}>
+                  Related {h.rerank_score.toFixed(2)}
+                  {h.kept ? ", sent to judge" : ""}
+                </span>
               </span>
             </div>
             <p className="line-clamp-4 whitespace-pre-wrap">{h.text}</p>
