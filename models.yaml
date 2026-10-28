@@ -1,5 +1,6 @@
 # Picks the provider and model for each job. Keys come from environment variables, never from this file.
-# Providers: openai, anthropic, ollama, local (reranker only), llm (reranker using the chat model)
+# Chat providers: openai, anthropic, bedrock, openai_compatible (needs base_url), ollama.
+# Reranker providers: local, llm (the chat model), cohere. The Settings page overrides this file.
 chat:
   provider: openai
   model: gpt-5-mini

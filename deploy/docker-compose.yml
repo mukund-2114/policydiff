@@ -9,6 +9,11 @@ x-api-env: &api-env
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   COHERE_API_KEY: ${COHERE_API_KEY:-}
+  # Amazon Bedrock only. Credentials come from an IAM role, or add AWS_ACCESS_KEY_ID and
+  # AWS_SECRET_ACCESS_KEY here and in .env.
+  AWS_REGION: ${AWS_REGION:-}
+  # Set true when the app is served over HTTPS, so the session cookie is never sent in the clear.
+  COOKIE_SECURE: ${COOKIE_SECURE:-false}
   # The local reranker downloads its model here once. The folder is the "models" volume.
   MODEL_CACHE_DIR: /data/models
   HF_HOME: /tmp/hf  # the downloader's scratch space; the container root is read-only
