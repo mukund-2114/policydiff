@@ -3,8 +3,15 @@ import os
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://x:x@localhost/x")
 os.environ.setdefault("SECRET_KEY", "test-secret")
 
-from app.providers.base import Message, Response, stream_chat
-from app.services.ask import build_messages, cited_numbers, plain_pieces, search_text
+from app.providers.base import Message, ProviderError, Response, stream_chat
+from app.services.ask import (
+    SearchPlan,
+    build_messages,
+    cited_numbers,
+    plain_pieces,
+    plan_search,
+    search_text,
+)
 
 HISTORY = [
     {"role": "user", "content": "How long do I have to submit an expense claim?"},
@@ -78,3 +85,34 @@ def test_the_em_dash_becomes_a_comma_even_when_it_arrives_alone():
     out = list(plain_pieces(iter(pieces)))
     assert "".join(v for k, v in out if k == "text") == "Hi, I can help."
     assert out[-1] == ("usage", 4)
+
+
+class PlanChat:
+    def __init__(self, plan=None):
+        self.plan, self.sent = plan, None
+
+    def generate(self, messages, schema=None):
+        self.sent = messages
+        if self.plan is None:
+            raise ProviderError("down")
+        return Response("", self.plan, 1, 1)
+
+
+def test_the_model_cleans_a_typo_ridden_message_into_a_search_query():
+    plan = SearchPlan(search_query="refund for a cancelled flight", needs_policy_lookup=True)
+    chat = PlanChat(plan)
+    got = plan_search("can i get a refudn i can th flight", [], chat)
+    assert got == plan
+    assert "Last message: can i get a refudn" in chat.sent[1].content
+
+
+def test_the_planner_sees_the_earlier_turns_so_short_replies_make_sense():
+    chat = PlanChat(SearchPlan(search_query="x", needs_policy_lookup=True))
+    plan_search("refundable", HISTORY, chat)
+    assert "How long do I have to submit an expense claim?" in chat.sent[1].content
+
+
+def test_if_the_planner_fails_the_plain_rules_still_search():
+    got = plan_search("and for contractors?", HISTORY, PlanChat(None))
+    assert got.needs_policy_lookup is True
+    assert got.search_query.startswith("How long do I have")
