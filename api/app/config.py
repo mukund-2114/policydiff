@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     cohere_api_key: str = ""
+    aws_region: str = ""  # Bedrock only; credentials come from the usual AWS sources
     model_cache_dir: str = ""  # where the local reranker keeps its downloaded model
     session_max_age_seconds: int = 60 * 60 * 12
     cookie_secure: bool = False  # set true when served over HTTPS

@@ -28,8 +28,9 @@ Provider = Literal["openai", "anthropic", "cohere"]
 
 
 class ModelPick(BaseModel):
-    provider: Literal["openai", "anthropic", "ollama"]
+    provider: Literal["openai", "openai_compatible", "anthropic", "bedrock", "ollama"]
     model: str = Field(min_length=1, max_length=100)
+    base_url: str | None = Field(default=None, max_length=300)  # openai_compatible and ollama
 
 
 class RerankPick(BaseModel):
@@ -81,9 +82,13 @@ def _out() -> SettingsOut:
     cfg = registry.effective_config()
     base = registry.load_config()
     return SettingsOut(
-        chat=ModelPick(provider=cfg.chat.provider, model=cfg.chat.model),
+        chat=ModelPick(
+            provider=cfg.chat.provider, model=cfg.chat.model, base_url=cfg.chat.base_url
+        ),
         vision=ModelPick(
-            provider=(cfg.vision or cfg.chat).provider, model=(cfg.vision or cfg.chat).model
+            provider=(cfg.vision or cfg.chat).provider,
+            model=(cfg.vision or cfg.chat).model,
+            base_url=(cfg.vision or cfg.chat).base_url,
         ),
         rerank=RerankPick(provider=cfg.rerank.provider, model=cfg.rerank.model),
         embed={"provider": base.embed.provider, "model": base.embed.model, "dims": base.embed.dims},

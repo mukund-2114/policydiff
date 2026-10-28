@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from app.config import get_settings
 from app.providers.anthropic_adapter import AnthropicChat
 from app.providers.base import ChatModel, Embedder, ProviderError, Reranker
+from app.providers.bedrock_adapter import BedrockChat
 from app.providers.cohere_rerank import CohereReranker
 from app.providers.local_rerank import LocalReranker
 from app.providers.ollama_adapter import OllamaChat, OllamaEmbedder
@@ -18,20 +19,22 @@ from app.providers.openai_adapter import OpenAIChat, OpenAIEmbedder
 from app.providers.rerank import LLMReranker
 from app.services import runtime
 
-CLOUD_PROVIDERS = {"openai", "anthropic", "cohere"}
+# openai_compatible is not here: it is a server you name (vLLM, LM Studio, a gateway), and the
+# egress check looks at its address instead.
+CLOUD_PROVIDERS = {"openai", "anthropic", "cohere", "bedrock"}
 
 
 DEFAULT_LOCAL_RERANKER = "Xenova/ms-marco-MiniLM-L-6-v2"  # about 80 MB
 
 
 class ChatCfg(BaseModel):
-    provider: Literal["openai", "anthropic", "ollama"]
+    provider: Literal["openai", "openai_compatible", "anthropic", "bedrock", "ollama"]
     model: str
     base_url: str | None = None
 
 
 class EmbedCfg(BaseModel):
-    provider: Literal["openai", "ollama"]
+    provider: Literal["openai", "openai_compatible", "ollama"]
     model: str
     dims: int
     base_url: str | None = None
@@ -103,10 +106,19 @@ def effective_config(override: dict | None = None) -> ModelsConfig:
         if pick := data.get(name):
             current = getattr(cfg, name)
             same = current is not None and current.provider == pick["provider"]
-            base_url = current.base_url if same else None
-            setattr(cfg, name, ChatCfg(base_url=base_url, **pick))
+            # A pick without an address keeps the one in models.yaml, if the provider is the same.
+            base_url = pick.get("base_url") or (current.base_url if same else None)
+            setattr(
+                cfg,
+                name,
+                ChatCfg(provider=pick["provider"], model=pick["model"], base_url=base_url),
+            )
     if pick := data.get("rerank"):
         cfg.rerank = RerankCfg(**pick)
+    for name in ("chat", "vision"):
+        part = getattr(cfg, name)
+        if part is not None and part.provider == "openai_compatible" and not part.base_url:
+            raise ProviderError(f"{name}: an OpenAI-compatible server needs an address")
     check_egress(cfg)
     return cfg
 
@@ -114,8 +126,14 @@ def effective_config(override: dict | None = None) -> ModelsConfig:
 def build_chat(part: ChatCfg) -> ChatModel:
     if part.provider == "openai":
         return OpenAIChat(part.model, runtime.secret("openai"), part.base_url)
+    if part.provider == "openai_compatible":
+        if not part.base_url:
+            raise ProviderError("openai_compatible needs a base URL")
+        return OpenAIChat(part.model, runtime.secret("openai"), part.base_url)
     if part.provider == "anthropic":
         return AnthropicChat(part.model, runtime.secret("anthropic"))
+    if part.provider == "bedrock":
+        return BedrockChat(part.model, get_settings().aws_region)
     return OllamaChat(part.model, part.base_url or "http://ollama:11434")
 
 
@@ -131,7 +149,7 @@ def get_vision(cfg: ModelsConfig | None = None) -> ChatModel:
 
 def get_embedder() -> Embedder:
     e = load_config().embed  # the embedding model is not on the Settings page (D49)
-    if e.provider == "openai":
+    if e.provider in ("openai", "openai_compatible"):
         return OpenAIEmbedder(e.model, e.dims, runtime.secret("openai"), e.base_url)
     return OllamaEmbedder(e.model, e.dims, e.base_url or "http://ollama:11434")
 

@@ -85,14 +85,28 @@ function ModelRow({ label, note, value, onChange }: { label: string; note: strin
       >
         <option value="openai">OpenAI</option>
         <option value="anthropic">Anthropic</option>
+        <option value="bedrock">Amazon Bedrock</option>
+        <option value="openai_compatible">OpenAI-compatible server</option>
         <option value="ollama">Ollama (local)</option>
       </select>
-      <input
-        className={field}
-        value={value.model}
-        aria-label={`${label} model`}
-        onChange={(e) => onChange({ ...value, model: e.target.value })}
-      />
+      <div className="grid gap-2 md:grid-cols-2">
+        <input
+          className={field}
+          value={value.model}
+          aria-label={`${label} model`}
+          placeholder="Model name"
+          onChange={(e) => onChange({ ...value, model: e.target.value })}
+        />
+        {(value.provider === "openai_compatible" || value.provider === "ollama") && (
+          <input
+            className={field}
+            value={value.base_url ?? ""}
+            aria-label={`${label} server address`}
+            placeholder="Server address, for example http://host:8000/v1"
+            onChange={(e) => onChange({ ...value, base_url: e.target.value || null })}
+          />
+        )}
+      </div>
     </div>
   );
 }
