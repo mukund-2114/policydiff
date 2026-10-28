@@ -1,4 +1,5 @@
 import base64
+from collections.abc import Iterator
 
 from anthropic import Anthropic
 from pydantic import BaseModel
@@ -61,3 +62,15 @@ class AnthropicChat:
             input_tokens=r.usage.input_tokens,
             output_tokens=r.usage.output_tokens,
         )
+
+    def stream(self, messages: list[Message]) -> Iterator[tuple[str, object]]:
+        """Pieces of the answer as they are written, then the token count."""
+        system = "\n\n".join(m.content for m in messages if m.role == "system")
+        turns = [{"role": m.role, "content": _content(m)} for m in messages if m.role != "system"]
+        kwargs: dict = {"model": self.model, "max_tokens": 2048, "messages": turns}
+        if system:
+            kwargs["system"] = system
+        with self._client.messages.stream(**kwargs) as stream:
+            yield from (("text", piece) for piece in stream.text_stream)
+            usage = stream.get_final_message().usage
+        yield "usage", usage.input_tokens + usage.output_tokens

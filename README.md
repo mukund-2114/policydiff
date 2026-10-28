@@ -1,4 +1,4 @@
-# Policy Diff
+﻿# Policy Diff
 
 Finds places where a company's policies contradict each other. Self-hosted: documents, vectors and findings stay in your own Postgres. Model calls use your own API key, and the app makes no other outbound calls.
 
@@ -46,7 +46,7 @@ The first build takes a few minutes. Open http://127.0.0.1:8080 and sign in.
 | --- | --- |
 | Documents | Upload a PDF, watch it move through the pipeline, start a scan |
 | Findings | The review queue. Filter by status, type and confidence. Export CSV. Each finding shows both quotes, the PDF pages, and a "Why this pair" panel |
-| Ask | Ask what the policies say. Answers cite their passages and list related findings. An "as of" date searches the versions in effect that day |
+| Ask | A chat over the policies. Answers stream in as they are written, cite their passages, remember the conversation for follow-ups, and list related findings. An "as of" date searches the versions in effect that day |
 | Search | Try the hybrid search by hand and see which pairs would go to the judge |
 | Compare | Two uploaded PDFs side by side |
 | Sample policies, Answer key | The demo corpus and its planted conflicts |

@@ -1,85 +1,88 @@
-"""Q&A with an optional as-of date: POST /ask."""
+"""Chat over the policies: POST /ask/stream sends the answer as it is written."""
 
+import json
+import logging
+from collections.abc import Iterator
 from datetime import date
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app import auth
-from app.db.session import get_db
+from app.db.session import get_engine
 from app.models import User
 from app.providers.base import ProviderError
 from app.providers.registry import get_chat, get_embedder, get_reranker
-from app.services.ask import ask
+from app.services.ask import ask_stream
 
 router = APIRouter(tags=["ask"])
+log = logging.getLogger(__name__)
+
+
+class Turn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(max_length=4000)
 
 
 class AskIn(BaseModel):
-    question: str = Field(min_length=3, max_length=1000)
+    question: str = Field(min_length=1, max_length=1000)
+    history: list[Turn] = Field(default=[], max_length=20)  # the conversation so far
     as_of: date | None = None  # search the versions in effect on this day instead of today's
 
 
-class PassageOut(BaseModel):
-    n: int
-    chunk_id: str
-    version_id: str
-    title: str
-    version_label: str
-    heading_path: str | None
-    page: int | None
-    kind: str
-    text: str
-    cited: bool
+def _sse(event: dict) -> str:
+    return f"data: {json.dumps(event, default=str)}\n\n"
 
 
-class FindingRef(BaseModel):
-    id: str
-    type: str
-    status: str
-    confidence: float
-    explanation: str
-    between: str
+@router.post("/ask/stream")
+def ask_question(body: AskIn, user: User = Depends(auth.current_user)):
+    """Events: passages, then token pieces, then done (or error).
 
+    The generator opens its own database session, because the request's session is closed before
+    a streamed response finishes.
+    """
+    workspace_id, question = user.workspace_id, body.question.strip()
+    history = [t.model_dump() for t in body.history]
 
-class AskOut(BaseModel):
-    answer: str
-    passages: list[PassageOut]
-    findings: list[FindingRef]
-    tokens: int
+    def events() -> Iterator[str]:
+        tokens = 0
+        with Session(get_engine()) as db:
+            try:
+                for event in ask_stream(
+                    db,
+                    workspace_id,
+                    question,
+                    history,
+                    body.as_of,
+                    get_chat(fast=True),
+                    get_embedder(),
+                    get_reranker(),
+                ):
+                    tokens = event.get("tokens", tokens)
+                    yield _sse(event)
+            except ProviderError as e:
+                yield _sse({"type": "error", "message": str(e)})
+                return
+            except Exception:  # noqa: BLE001 - tell the page, keep the details in the log
+                log.exception("chat failed")
+                yield _sse({"type": "error", "message": "Something went wrong. Try again."})
+                return
+            # The audit log keeps that a question was asked, not what it said.
+            auth.audit(
+                db,
+                user,
+                workspace_id,
+                "ask",
+                as_of=str(body.as_of) if body.as_of else None,
+                tokens=tokens,
+            )
+            db.commit()
 
-
-@router.post("/ask", response_model=AskOut)
-def ask_question(
-    body: AskIn, user: User = Depends(auth.current_user), db: Session = Depends(get_db)
-):
-    try:
-        result = ask(
-            db,
-            user.workspace_id,
-            body.question.strip(),
-            body.as_of,
-            get_chat(),
-            get_embedder(),
-            get_reranker(),
-        )
-    except ProviderError as e:
-        raise HTTPException(status_code=502, detail=str(e)) from None
-    # The audit log keeps that a question was asked, not what it said.
-    auth.audit(
-        db,
-        user,
-        user.workspace_id,
-        "ask",
-        as_of=str(body.as_of) if body.as_of else None,
-        tokens=result["tokens"],
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-    db.commit()
-    return {
-        **result,
-        "passages": [
-            {**p, "chunk_id": str(p["chunk_id"]), "version_id": str(p["version_id"])}
-            for p in result["passages"]
-        ],
-    }

@@ -123,9 +123,10 @@ def effective_config(override: dict | None = None) -> ModelsConfig:
     return cfg
 
 
-def build_chat(part: ChatCfg) -> ChatModel:
+def build_chat(part: ChatCfg, fast: bool = False) -> ChatModel:
+    effort = "minimal" if fast else None  # see OpenAIChat: less thinking, quicker first word
     if part.provider == "openai":
-        return OpenAIChat(part.model, runtime.secret("openai"), part.base_url)
+        return OpenAIChat(part.model, runtime.secret("openai"), part.base_url, effort)
     if part.provider == "openai_compatible":
         if not part.base_url:
             raise ProviderError("openai_compatible needs a base URL")
@@ -137,8 +138,9 @@ def build_chat(part: ChatCfg) -> ChatModel:
     return OllamaChat(part.model, part.base_url or "http://ollama:11434")
 
 
-def get_chat(cfg: ModelsConfig | None = None) -> ChatModel:
-    return build_chat((cfg or effective_config()).chat)
+def get_chat(cfg: ModelsConfig | None = None, fast: bool = False) -> ChatModel:
+    """`fast` is for conversation: the same model, asked to think less before it answers."""
+    return build_chat((cfg or effective_config()).chat, fast)
 
 
 def get_vision(cfg: ModelsConfig | None = None) -> ChatModel:

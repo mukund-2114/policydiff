@@ -24,7 +24,10 @@ class LocalReranker:
 
     @cached_property
     def _encoder(self):
+        import onnxruntime
         from fastembed.rerank.cross_encoder import TextCrossEncoder  # slow import, so loaded late
+
+        onnxruntime.disable_telemetry_events()  # the app makes no outbound calls of its own
 
         try:
             return TextCrossEncoder(model_name=self.model, cache_dir=self._cache_dir)

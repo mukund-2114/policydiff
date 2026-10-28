@@ -170,23 +170,32 @@ export type AuditEvent = {
   detail: Record<string, unknown> | null;
 };
 
-export type AskResult = {
-  answer: string;
-  tokens: number;
-  passages: {
-    n: number;
-    chunk_id: string;
-    version_id: string;
-    title: string;
-    version_label: string;
-    heading_path: string | null;
-    page: number | null;
-    kind: string;
-    text: string;
-    cited: boolean;
-  }[];
-  findings: { id: string; type: string; status: string; confidence: number; explanation: string; between: string }[];
+export type AskPassage = {
+  n: number;
+  chunk_id: string;
+  version_id: string;
+  title: string;
+  version_label: string;
+  heading_path: string | null;
+  page: number | null;
+  kind: string;
+  text: string;
 };
+export type AskFinding = {
+  id: string;
+  type: string;
+  status: string;
+  confidence: number;
+  explanation: string;
+  between: string;
+};
+// What the chat endpoint sends, one event at a time: the passages found, then pieces of the answer,
+// then a closing summary (or an error).
+export type AskEvent =
+  | { type: "passages"; passages: AskPassage[] }
+  | { type: "token"; text: string }
+  | { type: "done"; cited: number[]; findings: AskFinding[]; tokens: number; seconds: number }
+  | { type: "error"; message: string };
 
 export class ApiError extends Error {
   constructor(
@@ -244,8 +253,6 @@ export const api = {
     }),
   previewSettings: (body: Partial<Pick<SettingsData, "chat" | "vision" | "rerank">>) =>
     request<PreviewResult>("/settings/preview", { method: "POST", body: JSON.stringify(body) }),
-  ask: (question: string, asOf: string | null) =>
-    request<AskResult>("/ask", { method: "POST", body: JSON.stringify({ question, as_of: asOf }) }),
   fileUrl: (id: string) => `/api/versions/${id}/file`,
 
   samplesAvailable: () =>
@@ -258,3 +265,35 @@ export const api = {
   samplePolicy: (id: string) => request<SamplePolicyFull>(`/samples/northwind/policies/${id}`),
   answerKey: () => request<AnswerKey>("/samples/northwind/answer-key"),
 };
+
+// Reads the chat answer as it arrives. The server sends "data: {json}" blocks separated by a blank line.
+export async function* askStream(body: {
+  question: string;
+  history: { role: string; content: string }[];
+  as_of: string | null;
+}): AsyncGenerator<AskEvent> {
+  const res = await fetch("/api/ask/stream", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok || !res.body) {
+    const detail = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, typeof detail.detail === "string" ? detail.detail : res.statusText);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let end: number;
+    while ((end = buffer.indexOf("\n\n")) >= 0) {
+      const block = buffer.slice(0, end);
+      buffer = buffer.slice(end + 2);
+      if (block.startsWith("data: ")) yield JSON.parse(block.slice(6)) as AskEvent;
+    }
+  }
+}
