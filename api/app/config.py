@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     # Chunking. Moves to the per-workspace settings table in S13.
     chunk_max_tokens: int = 400
     chunk_overlap_tokens: int = 50
+    # Enrichment. Moves to the per-workspace settings table in S13.
+    summarize_media: bool = True  # write a short summary for each table and figure
+    extract_facts: bool = True  # pull numbers, durations and obligations out of each chunk
 
 
 @lru_cache

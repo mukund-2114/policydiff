@@ -225,6 +225,8 @@ class ChunkOut(BaseModel):
     context_header: str | None
     page: int | None
     bbox: dict | None
+    summary: str | None
+    facts: dict | None
     embedding_model: str | None  # set once the chunk has a vector
 
 

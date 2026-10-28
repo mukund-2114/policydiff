@@ -1,6 +1,6 @@
 """The three interfaces the pipeline talks to. No vendor SDK is imported outside providers/."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from pydantic import BaseModel
@@ -10,6 +10,7 @@ from pydantic import BaseModel
 class Message:
     role: str  # system, user, assistant
     content: str
+    images: list[bytes] = field(default_factory=list)  # PNG bytes, for vision models
 
 
 @dataclass

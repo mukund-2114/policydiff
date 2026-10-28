@@ -1,5 +1,7 @@
 """Optional offline adapter. Not needed for the default install."""
 
+import base64
+
 import httpx
 from pydantic import BaseModel
 
@@ -14,7 +16,18 @@ class OllamaChat:
     def generate(self, messages: list[Message], schema: type[BaseModel] | None = None) -> Response:
         body: dict = {
             "model": self.model,
-            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "messages": [
+                {
+                    "role": m.role,
+                    "content": m.content,
+                    **(
+                        {"images": [base64.b64encode(i).decode() for i in m.images]}
+                        if m.images
+                        else {}
+                    ),
+                }
+                for m in messages
+            ],
             "stream": False,
             "options": {"temperature": 0},
         }

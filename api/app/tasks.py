@@ -8,19 +8,22 @@ from dataclasses import asdict
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+import pymupdf
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db.session import get_engine
-from app.jobs import enqueue_chunk, enqueue_embed, queue
-from app.models import Chunk, Document, DocumentVersion, Scan
-from app.pipeline.chunk import chunk_pages, context_header
+from app.jobs import enqueue_chunk, enqueue_embed, enqueue_enrich, queue
+from app.models import Chunk, Document, DocumentVersion, Finding, PairJudgment, Scan
+from app.pipeline import enrich
+from app.pipeline.chunk import FIGURE_PLACEHOLDER, chunk_pages, context_header
 from app.pipeline.embed import MAX_CHARS, embedding_input
 from app.pipeline.judge import PROMPT_VERSION
 from app.pipeline.parse import parse_pdf
 from app.pipeline.stages import run_stage
-from app.providers.registry import get_chat, get_embedder, get_reranker, load_config
+from app.providers.base import ProviderError
+from app.providers.registry import get_chat, get_embedder, get_reranker, get_vision, load_config
 from app.retrieval.funnel import MAX_RERANKED, MMR_KEEP, MMR_LAMBDA, RELATED_THRESHOLD
 from app.services.scan import finish, run_scan
 from app.services.versions import plan_supersede
@@ -66,8 +69,19 @@ def chunk_version(version_id: str) -> None:
         with run_stage(db, version, "chunking", "chunking") as stage:
             raw = json.loads(get_storage().get(version.parsed_json_path))
             drafts, stats = chunk_pages(
-                raw, settings.chunk_max_tokens, settings.chunk_overlap_tokens
+                raw,
+                settings.chunk_max_tokens,
+                settings.chunk_overlap_tokens,
+                figures=settings.summarize_media,
             )
+            # Judgments and findings point at the old chunks, so they go with them. A new scan
+            # judges the new chunks.
+            old_ids = select(Chunk.id).where(Chunk.version_id == version.id)
+            stale = select(PairJudgment.id).where(
+                PairJudgment.chunk_a.in_(old_ids) | PairJudgment.chunk_b.in_(old_ids)
+            )
+            db.execute(delete(Finding).where(Finding.judgment_id.in_(stale)))
+            db.execute(delete(PairJudgment).where(PairJudgment.id.in_(stale)))
             db.execute(delete(Chunk).where(Chunk.version_id == version.id))
             for i, d in enumerate(drafts):
                 db.add(
@@ -99,7 +113,68 @@ def chunk_version(version_id: str) -> None:
         if version.status != "failed":
             version.status = "chunked"
             db.commit()
+            enqueue_enrich(version.id)
+
+
+@queue.task(name="enrich_version")
+def enrich_version(version_id: str) -> None:
+    """Describe tables and figures and pull facts out of chunks, then hand over to embedding.
+
+    Safe to run again: it fills only what is still empty. A chunk the model fails on is left empty
+    and logged in the stage detail, so one bad answer does not stop the document.
+    """
+    settings = get_settings()
+    with Session(get_engine()) as db:
+        version = db.get(DocumentVersion, uuid.UUID(version_id))
+        if version is None:
+            return
+        with run_stage(db, version, "enriching", "chunking") as stage:
+            chunks = db.scalars(
+                select(Chunk).where(Chunk.version_id == version.id).order_by(Chunk.position)
+            ).all()
+            detail = {"summaries": 0, "figures": 0, "facts": 0, "failed": 0, "tokens": 0}
+            if (settings.summarize_media or settings.extract_facts) and chunks:
+                chat, vision = get_chat(), get_vision()
+                with tempfile.TemporaryDirectory() as tmp:
+                    pdf = Path(tmp) / "doc.pdf"
+                    get_storage().download(version.file_path, pdf)
+                    with pymupdf.open(pdf) as doc:
+                        for c in chunks:
+                            _enrich_chunk(c, chat, vision, doc, settings, detail)
+                            db.commit()
+            stage.detail = detail
+        if version.status != "failed":
+            version.status = "chunked"
+            db.commit()
             enqueue_embed(version.id)
+
+
+def _enrich_chunk(c: Chunk, chat, vision, pdf, settings, detail: dict) -> None:
+    try:
+        if settings.summarize_media and c.kind == "table" and not c.summary:
+            c.summary, tokens = enrich.summarize_table(chat, c.heading_path, c.text)
+            detail["summaries"] += 1
+            detail["tokens"] += tokens
+        elif settings.summarize_media and c.kind == "figure" and c.text == FIGURE_PLACEHOLDER:
+            box = c.bbox["boxes"][0]
+            page = pdf[box["page"] - 1]
+            png = page.get_pixmap(clip=pymupdf.Rect(*box["bbox"]), dpi=150).tobytes("png")
+            reading, tokens = enrich.read_figure(vision, c.heading_path, png)
+            c.text = enrich.figure_text(reading)
+            detail["figures"] += 1
+            detail["tokens"] += tokens
+        if settings.extract_facts and c.facts is None and c.text != FIGURE_PLACEHOLDER:
+            c.facts, tokens = _facts(chat, c)
+            detail["facts"] += 1
+            detail["tokens"] += tokens
+    except ProviderError as e:
+        detail["failed"] += 1
+        log.warning("enrich failed for chunk %s: %s", c.id, e)
+
+
+def _facts(chat, c: Chunk) -> tuple[dict, int]:
+    facts, tokens = enrich.extract_facts(chat, c.heading_path, c.text)
+    return {"items": facts}, tokens
 
 
 @queue.task(name="embed_version")

@@ -87,6 +87,8 @@ export type Chunk = {
   text: string;
   context_header: string | null;
   page: number | null;
+  summary: string | null;
+  facts: { items: { kind: string; subject: string; value: string }[] } | null;
   embedding_model: string | null;
 };
 

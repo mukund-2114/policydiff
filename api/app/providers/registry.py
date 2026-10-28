@@ -107,6 +107,12 @@ def get_chat() -> ChatModel:
     return build_chat(load_config().chat)
 
 
+def get_vision() -> ChatModel:
+    """The model that reads figures. models.yaml `vision:` if set, otherwise the chat model."""
+    cfg = load_config()
+    return build_chat(cfg.vision or cfg.chat)
+
+
 def get_embedder() -> Embedder:
     e = load_config().embed
     s = get_settings()

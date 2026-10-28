@@ -1,7 +1,26 @@
+import base64
+
 from anthropic import Anthropic
 from pydantic import BaseModel
 
 from app.providers.base import Message, ProviderError, Response
+
+
+def _content(m: Message):
+    if not m.images:
+        return m.content
+    blocks = [
+        {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": "image/png",
+                "data": base64.b64encode(png).decode(),
+            },
+        }
+        for png in m.images
+    ]
+    return [*blocks, {"type": "text", "text": m.content}]
 
 
 class AnthropicChat:
@@ -13,7 +32,7 @@ class AnthropicChat:
 
     def generate(self, messages: list[Message], schema: type[BaseModel] | None = None) -> Response:
         system = "\n\n".join(m.content for m in messages if m.role == "system")
-        turns = [{"role": m.role, "content": m.content} for m in messages if m.role != "system"]
+        turns = [{"role": m.role, "content": _content(m)} for m in messages if m.role != "system"]
         kwargs: dict = {"model": self.model, "max_tokens": 4096, "messages": turns}
         if system:
             kwargs["system"] = system

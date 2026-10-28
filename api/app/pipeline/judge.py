@@ -15,7 +15,7 @@ from pydantic import BaseModel, ValidationError
 
 from app.providers.base import ChatModel, Message, ProviderError
 
-PROMPT_VERSION = "judge-1"
+PROMPT_VERSION = "judge-2"  # judge-2 adds the extracted facts to each clause
 
 ConflictType = Literal[
     "numeric_mismatch",
@@ -46,6 +46,7 @@ class Clause:
     effective_from: date | None
     heading_path: str | None
     text: str
+    facts: str = ""  # one line from enrich.facts_line, empty when facts are off
 
 
 SYSTEM = """You compare two clauses from a company's policies and decide whether they contradict each other.
@@ -65,9 +66,10 @@ Rules for your answer:
 
 def _describe(label: str, c: Clause) -> str:
     when = f", effective {c.effective_from}" if c.effective_from else ""
+    facts = f"Key facts: {c.facts}\n" if c.facts else ""
     return (
         f'<clause_{label} document="{c.title}" version="{c.version_label}"{when}>\n'
-        f"Section: {c.heading_path or 'none'}\n{c.text}\n</clause_{label}>"
+        f"Section: {c.heading_path or 'none'}\n{c.text}\n{facts}</clause_{label}>"
     )
 
 

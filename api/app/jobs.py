@@ -40,6 +40,10 @@ def enqueue_chunk(version_id: uuid.UUID) -> None:
     queue.configure_task("chunk_version").defer(version_id=str(version_id))
 
 
+def enqueue_enrich(version_id: uuid.UUID) -> None:
+    queue.configure_task("enrich_version").defer(version_id=str(version_id))
+
+
 def enqueue_embed(version_id: uuid.UUID) -> None:
     queue.configure_task("embed_version").defer(version_id=str(version_id))
 

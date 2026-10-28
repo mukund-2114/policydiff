@@ -1,7 +1,20 @@
+import base64
+
 from openai import OpenAI
 from pydantic import BaseModel
 
 from app.providers.base import Message, ProviderError, Response
+
+
+def _content(m: Message):
+    """Plain text, or text plus images in the shape the vision models expect."""
+    if not m.images:
+        return m.content
+    parts = [{"type": "text", "text": m.content}]
+    for png in m.images:
+        url = "data:image/png;base64," + base64.b64encode(png).decode()
+        parts.append({"type": "image_url", "image_url": {"url": url}})
+    return parts
 
 
 class OpenAIChat:
@@ -12,7 +25,7 @@ class OpenAIChat:
         self._client = OpenAI(api_key=api_key or "none", base_url=base_url)
 
     def generate(self, messages: list[Message], schema: type[BaseModel] | None = None) -> Response:
-        msgs = [{"role": m.role, "content": m.content} for m in messages]
+        msgs = [{"role": m.role, "content": _content(m)} for m in messages]
         if schema is None:
             r = self._client.chat.completions.create(model=self.model, messages=msgs)
             parsed = None

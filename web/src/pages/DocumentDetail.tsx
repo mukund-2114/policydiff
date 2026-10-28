@@ -114,6 +114,18 @@ function ChunksView({ id }: { id: string }) {
             </p>
             {c.context_header && <p className="mt-1 text-muted">{c.context_header}</p>}
             <p className="mt-1 whitespace-pre-wrap">{c.text}</p>
+            {c.summary && (
+              <p className="mt-2 border-t border-border pt-2">
+                <span className="text-muted">Summary used for search: </span>
+                {c.summary}
+              </p>
+            )}
+            {c.facts && c.facts.items.length > 0 && (
+              <p className="mt-2 border-t border-border pt-2 font-mono">
+                <span className="font-sans text-muted">Facts sent to the judge: </span>
+                {c.facts.items.map((f) => `${f.subject}: ${f.value}`).join("; ")}
+              </p>
+            )}
           </li>
         ))}
       </ol>

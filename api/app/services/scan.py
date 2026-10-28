@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Chunk, Document, DocumentVersion, Finding, PairJudgment, Scan
 from app.pipeline.embed import embedding_input
+from app.pipeline.enrich import facts_line
 from app.pipeline.judge import (
     PROMPT_VERSION,
     Clause,
@@ -49,7 +50,8 @@ def _clause(db: Session, chunk: Chunk) -> Clause:
         .join(Document, Document.id == DocumentVersion.document_id)
         .where(DocumentVersion.id == chunk.version_id)
     ).one()
-    return Clause(d.title, v.version_label, v.effective_from, chunk.heading_path, chunk.text)
+    facts = facts_line((chunk.facts or {}).get("items"))
+    return Clause(d.title, v.version_label, v.effective_from, chunk.heading_path, chunk.text, facts)
 
 
 def _judge_one(db, scan, source: Chunk, hit: dict, chat: ChatModel, stats: ScanStats) -> None:

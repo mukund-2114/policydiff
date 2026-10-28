@@ -26,7 +26,7 @@ const STEPS: Step[] = [
     label: "Chunking",
     stage: "chunking",
     tab: "chunks",
-    does: "Finds the headings, cuts the text into numbered clauses, and turns each table into its own chunk.",
+    does: "Finds the headings, cuts the text into numbered clauses, and turns each table and picture into its own chunk.",
   },
   {
     key: "headers",
@@ -34,6 +34,13 @@ const STEPS: Step[] = [
     stage: "headers",
     tab: "chunks",
     does: "Writes one line for each chunk (document, version, date, section) that goes in front of the text before it is embedded.",
+  },
+  {
+    key: "enriching",
+    label: "Summaries and facts",
+    stage: "enriching",
+    tab: "chunks",
+    does: "Asks the model to describe each table and figure, so they can be searched, and to list the numbers, durations and obligations in each chunk for the judge.",
   },
   {
     key: "embedding",

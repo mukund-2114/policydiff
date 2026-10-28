@@ -15,7 +15,9 @@ The rules, in the order they run:
      is treated as a sub-heading and goes into the path instead of becoming a chunk.
   5. A table becomes its own chunk, written as Markdown. Text the parser found inside the table
      area is dropped so it is not counted twice.
-  6. A chunk longer than the limit is split at sentence ends, repeating a little text (overlap)
+  6. A picture larger than a logo becomes a figure chunk. Its text is a placeholder until the
+     enrich stage looks at the image and writes what it shows.
+  7. A chunk longer than the limit is split at sentence ends, repeating a little text (overlap)
      at the start of each next piece so no sentence loses its context.
 """
 
@@ -30,18 +32,22 @@ SUBHEAD_LEVEL = 100  # numbered sub-headings always rank below headings found by
 LABEL_MAX_CHARS = 60  # a clause this short, with no full stop, is a label and not a rule
 PAGE_NUMBER = re.compile(r"^(page\s+)?#( of #)?$", re.IGNORECASE)  # digits are replaced by #
 SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+FIGURE_MIN_POINTS = 60  # an image smaller than this on either side is a logo or an icon
 MARGIN = 0.08  # the top and bottom 8% of a page count as header and footer area
 CHARS_PER_TOKEN = 4  # a rough rule that holds for English; avoids needing a tokenizer
 
 
 @dataclass
 class ChunkDraft:
-    kind: str  # text or table
+    kind: str  # text, table or figure
     heading_path: str | None
     text: str
     page: int
     boxes: list[dict] = field(default_factory=list)  # [{"page": 1, "bbox": [x0, y0, x1, y1]}]
     split: bool = False  # true when this piece was cut from a longer clause
+
+
+FIGURE_PLACEHOLDER = "[Figure, not described yet]"
 
 
 def tokens(text: str) -> int:
@@ -107,7 +113,9 @@ def _margin_noise(pages: list[dict], simple: list[dict]) -> set[tuple[int, int]]
     return {pos for pos, key in zones.items() if pages_per_key[key] >= 2 or PAGE_NUMBER.match(key)}
 
 
-def chunk_pages(raw: dict, max_tokens: int = 400, overlap_tokens: int = 50) -> tuple[list, dict]:
+def chunk_pages(
+    raw: dict, max_tokens: int = 400, overlap_tokens: int = 50, figures: bool = True
+) -> tuple[list, dict]:
     """Returns (chunks, stats). stats is shown on the pipeline page."""
     simple = simplify(raw)
     noise = _margin_noise(raw["pages"], simple)
@@ -187,9 +195,21 @@ def chunk_pages(raw: dict, max_tokens: int = 400, overlap_tokens: int = 50) -> t
                 continue  # this text belongs to a table and is read from the table instead
             items.append((b["bbox"][1], b["bbox"][0], "block", b))
         items += [(t["bbox"][1], t["bbox"][0], "table", t) for t in page["tables"]]
+        if figures:
+            for img in raw["pages"][pi]["images"]:
+                x0, y0, x1, y1 = img["bbox"]
+                in_margin = y1 < raw["pages"][pi]["height"] * MARGIN
+                in_margin |= y0 > raw["pages"][pi]["height"] * (1 - MARGIN)
+                if min(x1 - x0, y1 - y0) >= FIGURE_MIN_POINTS and not in_margin:
+                    items.append((y0, x0, "figure", {"bbox": [x0, y0, x1, y1]}))
 
         for _, _, what, item in sorted(items, key=lambda i: i[:2]):
             path = " > ".join(h for _, h in stack) or None
+            if what == "figure":
+                flush()
+                box = [{"page": page["number"], "bbox": item["bbox"]}]
+                chunks.append(ChunkDraft("figure", path, FIGURE_PLACEHOLDER, page["number"], box))
+                continue
             if what == "table":
                 flush()
                 text = table_markdown(item["rows"])
@@ -229,5 +249,6 @@ def chunk_pages(raw: dict, max_tokens: int = 400, overlap_tokens: int = 50) -> t
 
     stats["chunks"] = len(chunks)
     stats["table_chunks"] = sum(c.kind == "table" for c in chunks)
+    stats["figure_chunks"] = sum(c.kind == "figure" for c in chunks)
     stats["longest_tokens"] = max((tokens(c.text) for c in chunks), default=0)
     return chunks, dict(stats)
