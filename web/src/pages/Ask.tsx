@@ -33,6 +33,14 @@ const EXAMPLES = [
   "How many bags can an economy passenger check?",
 ];
 
+// The sources sit in a closed list under the answer. A click on a marker opens it and scrolls there.
+function openSource(p: AskPassage) {
+  const item = document.getElementById(`source-${p.n}-${p.chunk_id}`);
+  const list = item?.closest("details");
+  if (list) list.open = true;
+  item?.scrollIntoView({ block: "center" });
+}
+
 // Turns "[1]" in the text into a small marker that names the document when you hover it.
 function WithCitations({ text, passages }: { text: string; passages: AskPassage[] }) {
   return (
@@ -42,14 +50,15 @@ function WithCitations({ text, passages }: { text: string; passages: AskPassage[
         const p = m && passages.find((x) => x.n === Number(m[1]));
         if (!p) return <span key={i}>{part}</span>;
         return (
-          <a
+          <button
             key={i}
-            href={`#source-${p.n}-${p.chunk_id}`}
+            type="button"
             title={`${p.title} v${p.version_label}, ${p.heading_path ?? ""}`}
-            className="mx-0.5 rounded-ctl border border-border bg-bg px-1 font-mono text-xs text-accent no-underline hover:bg-accent-soft"
+            className="mx-0.5 rounded-ctl border border-border bg-bg px-1 font-mono text-xs text-accent hover:bg-accent-soft"
+            onClick={() => openSource(p)}
           >
             {p.n}
-          </a>
+          </button>
         );
       })}
     </>
@@ -138,8 +147,13 @@ export function Ask() {
   const end = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => end.current?.scrollIntoView({ block: "end" }), [messages]);
-  useEffect(() => box.current?.focus(), [busy]);
+  // Braces matter: an effect must return nothing or a cleanup function, never a value.
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: "end" });
+  }, [messages]);
+  useEffect(() => {
+    if (!busy) box.current?.focus();
+  }, [busy]);
 
   async function send(text: string) {
     const question = text.trim();
@@ -171,7 +185,7 @@ export function Ask() {
     <div className="mx-auto flex h-screen max-w-3xl flex-col px-4">
       <div className="flex flex-wrap items-center gap-3 py-4">
         <h1 className="mr-auto text-lg font-semibold">Ask</h1>
-        <label className="flex items-center gap-2 text-muted">
+        <label className="flex items-center gap-2 whitespace-nowrap text-muted">
           As of
           <input
             className={`${field} w-40`}
