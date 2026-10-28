@@ -6,8 +6,9 @@ Only chunks of `ready` versions are searched, so superseded versions never come 
 
 import re
 import uuid
+from datetime import date
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import Chunk, Document, DocumentVersion
@@ -17,20 +18,36 @@ TOP_EACH = 25  # guide step 3: top 25 from each search
 TOP_FUSED = 30  # guide step 4: keep 30 after RRF
 
 
-def _scope(q, workspace_id: uuid.UUID, exclude_version_id: uuid.UUID | None):
-    """Only current chunks of this workspace, and never the version the query came from."""
+def _scope(
+    q, workspace_id: uuid.UUID, exclude_version_id: uuid.UUID | None, as_of: date | None = None
+):
+    """Only current chunks of this workspace, and never the version the query came from.
+
+    With `as_of`, "current" means whichever versions were in effect on that day, so a version that
+    has since been superseded is searched, and one that starts later is not (guide, Q&A mode).
+    """
     q = q.join(DocumentVersion, DocumentVersion.id == Chunk.version_id).where(
-        Chunk.workspace_id == workspace_id, DocumentVersion.status == "ready"
+        Chunk.workspace_id == workspace_id
     )
+    if as_of is None:
+        q = q.where(DocumentVersion.status == "ready")
+    else:
+        q = q.where(
+            DocumentVersion.status.in_(["ready", "superseded"]),
+            or_(DocumentVersion.effective_from.is_(None), DocumentVersion.effective_from <= as_of),
+            or_(DocumentVersion.effective_to.is_(None), DocumentVersion.effective_to > as_of),
+        )
     if exclude_version_id:
         q = q.where(Chunk.version_id != exclude_version_id)
     return q
 
 
-def vector_search(db, workspace_id, query_vector, exclude_version_id=None, limit=TOP_EACH):
+def vector_search(
+    db, workspace_id, query_vector, exclude_version_id=None, limit=TOP_EACH, as_of=None
+):
     """Chunk ids nearest in meaning, best first (cosine distance, the HNSW index)."""
     q = select(Chunk.id).where(Chunk.embedding.is_not(None))
-    q = _scope(q, workspace_id, exclude_version_id)
+    q = _scope(q, workspace_id, exclude_version_id, as_of)
     return list(db.scalars(q.order_by(Chunk.embedding.cosine_distance(query_vector)).limit(limit)))
 
 
@@ -45,14 +62,16 @@ def or_query(text: str) -> str:
     return " | ".join(words)
 
 
-def keyword_search(db, workspace_id, query_text, exclude_version_id=None, limit=TOP_EACH):
+def keyword_search(
+    db, workspace_id, query_text, exclude_version_id=None, limit=TOP_EACH, as_of=None
+):
     """Chunk ids sharing the most words with the query, best first (the tsvector GIN index)."""
     tsquery_text = or_query(query_text)
     if not tsquery_text:
         return []
     tsquery = func.to_tsquery("english", tsquery_text)
     q = select(Chunk.id).where(Chunk.tsv.op("@@")(tsquery))
-    q = _scope(q, workspace_id, exclude_version_id)
+    q = _scope(q, workspace_id, exclude_version_id, as_of)
     return list(db.scalars(q.order_by(func.ts_rank_cd(Chunk.tsv, tsquery).desc()).limit(limit)))
 
 
@@ -62,10 +81,11 @@ def hybrid_search(
     query_text: str,
     query_vector: list[float],
     exclude_version_id: uuid.UUID | None = None,
+    as_of: date | None = None,
 ) -> list[dict]:
     """Both searches, merged with RRF. Returns hits best first with where each one was found."""
-    by_meaning = vector_search(db, workspace_id, query_vector, exclude_version_id)
-    by_words = keyword_search(db, workspace_id, query_text, exclude_version_id)
+    by_meaning = vector_search(db, workspace_id, query_vector, exclude_version_id, as_of=as_of)
+    by_words = keyword_search(db, workspace_id, query_text, exclude_version_id, as_of=as_of)
     fused = rrf([by_meaning, by_words], top=TOP_FUSED)
 
     ids = [chunk_id for chunk_id, _ in fused]

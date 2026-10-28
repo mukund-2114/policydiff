@@ -47,7 +47,7 @@ class ScanStats:
     errors: list[str] = field(default_factory=list)
 
 
-def _clause(db: Session, chunk: Chunk) -> Clause:
+def load_clause(db: Session, chunk: Chunk) -> Clause:
     v, d = db.execute(
         select(DocumentVersion, Document)
         .join(Document, Document.id == DocumentVersion.document_id)
@@ -139,7 +139,7 @@ def run_scan(
                 stats.cached += 1
                 continue
             done_pairs.add(key)
-            todo.append((key, hit, _clause(db, chunk), _clause(db, hit["chunk"])))
+            todo.append((key, hit, load_clause(db, chunk), load_clause(db, hit["chunk"])))
         # The model calls wait on the network, so a clause's pairs are asked about together.
         # Everything that touches the database stays on this thread.
         with ThreadPoolExecutor(max_workers=JUDGE_THREADS) as pool:

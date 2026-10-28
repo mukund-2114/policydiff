@@ -24,7 +24,7 @@ def health(deep: bool = False, db: Session = Depends(get_db)):
         return result
 
     try:
-        cfg = registry.load_config()
+        cfg = registry.effective_config()
         result["models"] = {
             "chat": f"{cfg.chat.provider}:{cfg.chat.model}",
             "embed": f"{cfg.embed.provider}:{cfg.embed.model}",

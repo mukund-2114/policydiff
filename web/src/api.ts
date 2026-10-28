@@ -134,6 +134,47 @@ export type AnswerItem = {
 };
 export type AnswerKey = { conflicts: AnswerItem[]; near_misses: AnswerItem[] };
 
+export type ModelPick = { provider: "openai" | "anthropic" | "ollama"; model: string };
+export type RerankPick = { provider: "local" | "llm" | "cohere"; model: string | null };
+export type SettingsData = {
+  chat: ModelPick;
+  vision: ModelPick;
+  rerank: RerankPick;
+  embed: { provider: string; model: string; dims: number };
+  keys: Record<string, { set: boolean; source: "settings" | "env" | null }>;
+  allow_cloud: boolean;
+};
+export type PreviewResult = {
+  clauses: number;
+  pairs: number;
+  conflicts: number;
+  possible: number;
+  unverified: number;
+  failed: number;
+  tokens: number;
+  library_chunks: number;
+  full_scan_tokens: number;
+  seconds: number;
+};
+
+export type AskResult = {
+  answer: string;
+  tokens: number;
+  passages: {
+    n: number;
+    chunk_id: string;
+    version_id: string;
+    title: string;
+    version_label: string;
+    heading_path: string | null;
+    page: number | null;
+    kind: string;
+    text: string;
+    cited: boolean;
+  }[];
+  findings: { id: string; type: string; status: string; confidence: number; explanation: string; between: string }[];
+};
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -178,6 +219,18 @@ export const api = {
   findings: () => request<Finding[]>("/findings"),
   updateFinding: (id: string, changes: Partial<Pick<Finding, "status" | "owner" | "resolution_note">>) =>
     request<Finding>(`/findings/${id}`, { method: "PATCH", body: JSON.stringify(changes) }),
+  settings: () => request<SettingsData>("/settings"),
+  saveSettings: (body: Partial<Pick<SettingsData, "chat" | "vision" | "rerank">> & { keys?: Record<string, string | null> }) =>
+    request<SettingsData>("/settings", { method: "PUT", body: JSON.stringify(body) }),
+  testKey: (provider: string, key?: string) =>
+    request<{ ok: boolean; message: string }>("/settings/test-key", {
+      method: "POST",
+      body: JSON.stringify({ provider, key: key ?? null }),
+    }),
+  previewSettings: (body: Partial<Pick<SettingsData, "chat" | "vision" | "rerank">>) =>
+    request<PreviewResult>("/settings/preview", { method: "POST", body: JSON.stringify(body) }),
+  ask: (question: string, asOf: string | null) =>
+    request<AskResult>("/ask", { method: "POST", body: JSON.stringify({ question, as_of: asOf }) }),
   fileUrl: (id: string) => `/api/versions/${id}/file`,
 
   samplesAvailable: () =>

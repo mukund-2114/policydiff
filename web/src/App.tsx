@@ -2,12 +2,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError, api, type User } from "./api";
 import { Nav, BrandMark } from "./components/Nav";
+import { Ask } from "./pages/Ask";
 import { AnswerKey } from "./pages/AnswerKey";
 import { Compare } from "./pages/Compare";
 import { DocumentDetail } from "./pages/DocumentDetail";
 import { Documents } from "./pages/Documents";
 import { Findings } from "./pages/Findings";
 import { Search } from "./pages/Search";
+import { Settings } from "./pages/Settings";
 import { SampleCompare } from "./pages/SampleCompare";
 import { SampleViewer } from "./pages/SampleViewer";
 import { Samples } from "./pages/Samples";
@@ -107,6 +109,10 @@ function Shell({ user }: { user: User }) {
         <SampleCompare />
       ) : page === "findings" ? (
         <Findings />
+      ) : page === "ask" ? (
+        <Ask />
+      ) : page === "settings" ? (
+        <Settings />
       ) : page === "search" ? (
         <Search />
       ) : page === "compare" ? (

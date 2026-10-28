@@ -8,6 +8,7 @@ from app.models.tables import (  # noqa: F401
     Finding,
     PairJudgment,
     Scan,
+    Settings,
     User,
     VersionStage,
     Workspace,

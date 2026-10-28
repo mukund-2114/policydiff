@@ -16,6 +16,7 @@ from app.providers.local_rerank import LocalReranker
 from app.providers.ollama_adapter import OllamaChat, OllamaEmbedder
 from app.providers.openai_adapter import OpenAIChat, OpenAIEmbedder
 from app.providers.rerank import LLMReranker
+from app.services import runtime
 
 CLOUD_PROVIDERS = {"openai", "anthropic", "cohere"}
 
@@ -94,37 +95,52 @@ def load_config() -> ModelsConfig:
     return cfg
 
 
+def effective_config(override: dict | None = None) -> ModelsConfig:
+    """models.yaml with the Settings page choices laid on top. `override` tries choices unsaved."""
+    cfg = load_config().model_copy(deep=True)
+    data = runtime.stored_data() if override is None else override
+    for name in ("chat", "vision"):
+        if pick := data.get(name):
+            current = getattr(cfg, name)
+            same = current is not None and current.provider == pick["provider"]
+            base_url = current.base_url if same else None
+            setattr(cfg, name, ChatCfg(base_url=base_url, **pick))
+    if pick := data.get("rerank"):
+        cfg.rerank = RerankCfg(**pick)
+    check_egress(cfg)
+    return cfg
+
+
 def build_chat(part: ChatCfg) -> ChatModel:
-    s = get_settings()
     if part.provider == "openai":
-        return OpenAIChat(part.model, s.openai_api_key, part.base_url)
+        return OpenAIChat(part.model, runtime.secret("openai"), part.base_url)
     if part.provider == "anthropic":
-        return AnthropicChat(part.model, s.anthropic_api_key)
+        return AnthropicChat(part.model, runtime.secret("anthropic"))
     return OllamaChat(part.model, part.base_url or "http://ollama:11434")
 
 
-def get_chat() -> ChatModel:
-    return build_chat(load_config().chat)
+def get_chat(cfg: ModelsConfig | None = None) -> ChatModel:
+    return build_chat((cfg or effective_config()).chat)
 
 
-def get_vision() -> ChatModel:
-    """The model that reads figures. models.yaml `vision:` if set, otherwise the chat model."""
-    cfg = load_config()
+def get_vision(cfg: ModelsConfig | None = None) -> ChatModel:
+    """The model that reads figures. `vision:` if set, otherwise the chat model."""
+    cfg = cfg or effective_config()
     return build_chat(cfg.vision or cfg.chat)
 
 
 def get_embedder() -> Embedder:
-    e = load_config().embed
-    s = get_settings()
+    e = load_config().embed  # the embedding model is not on the Settings page (D49)
     if e.provider == "openai":
-        return OpenAIEmbedder(e.model, e.dims, s.openai_api_key, e.base_url)
+        return OpenAIEmbedder(e.model, e.dims, runtime.secret("openai"), e.base_url)
     return OllamaEmbedder(e.model, e.dims, e.base_url or "http://ollama:11434")
 
 
-def get_reranker() -> Reranker:
-    r, s = load_config().rerank, get_settings()
+def get_reranker(cfg: ModelsConfig | None = None) -> Reranker:
+    cfg, s = cfg or effective_config(), get_settings()
+    r = cfg.rerank
     if r.provider == "local":
         return LocalReranker(r.model or DEFAULT_LOCAL_RERANKER, s.model_cache_dir or None)
     if r.provider == "cohere":
-        return CohereReranker(r.model or "rerank-v3.5", s.cohere_api_key)
-    return LLMReranker(get_chat())
+        return CohereReranker(r.model or "rerank-v3.5", runtime.secret("cohere"))
+    return LLMReranker(get_chat(cfg))

@@ -23,7 +23,13 @@ from app.pipeline.judge import PROMPT_VERSION
 from app.pipeline.parse import parse_pdf
 from app.pipeline.stages import run_stage
 from app.providers.base import ProviderError
-from app.providers.registry import get_chat, get_embedder, get_reranker, get_vision, load_config
+from app.providers.registry import (
+    effective_config,
+    get_chat,
+    get_embedder,
+    get_reranker,
+    get_vision,
+)
 from app.retrieval.funnel import MAX_RERANKED, MMR_KEEP, MMR_LAMBDA, RELATED_THRESHOLD
 from app.services.scan import finish, run_scan
 from app.services.versions import plan_supersede
@@ -233,7 +239,7 @@ def scan_version(scan_id: str) -> None:
         version = db.get(DocumentVersion, uuid.UUID(scan.scope.removeprefix("version:")))
         scan.status, scan.started_at = "running", datetime.now(UTC)
         db.commit()
-        cfg = load_config()
+        cfg = effective_config()
         snapshot = {  # what this scan ran with, so a finding can be traced to it
             "chat": f"{cfg.chat.provider}/{cfg.chat.model}",
             "rerank": f"{cfg.rerank.provider}/{cfg.rerank.model or 'default'}",
