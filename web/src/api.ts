@@ -250,6 +250,10 @@ export const api = {
 
   samplesAvailable: () =>
     request<{ available: boolean }>("/samples/northwind").then((r) => r.available, () => false),
+  loadSamples: () =>
+    request<{ added: number; already_there: number; missing: string[] }>("/samples/northwind/load", {
+      method: "POST",
+    }),
   samplePolicies: () => request<SamplePolicy[]>("/samples/northwind/policies"),
   samplePolicy: (id: string) => request<SamplePolicyFull>(`/samples/northwind/policies/${id}`),
   answerKey: () => request<AnswerKey>("/samples/northwind/answer-key"),

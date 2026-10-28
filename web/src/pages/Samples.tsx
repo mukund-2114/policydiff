@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../api";
 import { go } from "../router";
@@ -8,6 +8,7 @@ export function Samples() {
   const [selected, setSelected] = useState<string[]>([]);
   const policies = useQuery({ queryKey: ["sample-policies"], queryFn: api.samplePolicies });
   const key = useQuery({ queryKey: ["answer-key"], queryFn: api.answerKey });
+  const load = useMutation({ mutationFn: api.loadSamples });
   if (policies.isError) return <p className="p-6 text-muted">The sample corpus is not installed.</p>;
 
   const count = (doc: string) =>
@@ -19,6 +20,9 @@ export function Samples() {
     <div className="mx-auto max-w-6xl space-y-4 px-4 py-6">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="mr-auto text-lg font-semibold">Sample policies</h1>
+        <button className={button} disabled={load.isPending} onClick={() => load.mutate()}>
+          {load.isPending ? "Loading" : "Load as documents"}
+        </button>
         <button
           className={button}
           disabled={selected.length !== 2}
@@ -27,6 +31,16 @@ export function Samples() {
           Compare selected
         </button>
       </div>
+      {load.isError && <p className="text-danger">{(load.error as Error).message}</p>}
+      {load.data && (
+        <p className="text-ok">
+          Added {load.data.added}, already in the library {load.data.already_there}.{" "}
+          <a className="text-accent hover:underline" href="#/documents">
+            Open Documents
+          </a>{" "}
+          to watch them process, then press Scan for conflicts on a document.
+        </p>
+      )}
       <p className="text-muted">
         Northwind Air is a made-up airline. These 15 policies hold planted conflicts, so you can see what the scanner
         should find. They are read straight from the Markdown files, not uploaded.
