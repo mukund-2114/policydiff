@@ -4,6 +4,7 @@ import json
 import logging
 import tempfile
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -37,6 +38,8 @@ from app.services.versions import plan_supersede
 from app.storage import get_storage, parsed_key
 
 log = logging.getLogger(__name__)
+
+FACT_THREADS = 12  # key-fact calls in flight at once; each one is short and waits on the network
 
 
 @queue.task(name="parse_version")
@@ -147,8 +150,11 @@ def enrich_version(version_id: str) -> None:
                     get_storage().download(version.file_path, pdf)
                     with pymupdf.open(pdf) as doc:
                         for c in chunks:
-                            _enrich_chunk(c, chat, vision, doc, settings, detail)
-                            db.commit()
+                            _describe_media(c, chat, vision, doc, settings, detail)
+                        db.commit()
+                if settings.extract_facts:
+                    _add_facts(chunks, chat, detail)
+                    db.commit()
             stage.detail = detail
         if version.status != "failed":
             version.status = "chunked"
@@ -156,33 +162,48 @@ def enrich_version(version_id: str) -> None:
             enqueue_embed(version.id)
 
 
-def _enrich_chunk(c: Chunk, chat, vision, pdf, settings, detail: dict) -> None:
+def _describe_media(c: Chunk, chat, vision, pdf, settings, detail: dict) -> None:
+    """A summary for a table, or a reading of a figure. A few per document, so one at a time."""
+    if not settings.summarize_media:
+        return
     try:
-        if settings.summarize_media and c.kind == "table" and not c.summary:
+        if c.kind == "table" and not c.summary:
             c.summary, tokens = enrich.summarize_table(chat, c.heading_path, c.text)
             detail["summaries"] += 1
-            detail["tokens"] += tokens
-        elif settings.summarize_media and c.kind == "figure" and c.text == FIGURE_PLACEHOLDER:
+        elif c.kind == "figure" and c.text == FIGURE_PLACEHOLDER:
             box = c.bbox["boxes"][0]
             page = pdf[box["page"] - 1]
             png = page.get_pixmap(clip=pymupdf.Rect(*box["bbox"]), dpi=200).tobytes("png")
             reading, tokens = enrich.read_figure(vision, c.heading_path, png)
             c.text = enrich.figure_text(reading)
             detail["figures"] += 1
-            detail["tokens"] += tokens
-        # A figure's text already lists its labelled values, so it gets no separate facts.
-        if settings.extract_facts and c.facts is None and c.kind != "figure":
-            c.facts, tokens = _facts(chat, c)
-            detail["facts"] += 1
-            detail["tokens"] += tokens
+        else:
+            return
+        detail["tokens"] += tokens
     except ProviderError as e:
         detail["failed"] += 1
         log.warning("enrich failed for chunk %s: %s", c.id, e)
 
 
-def _facts(chat, c: Chunk) -> tuple[dict, int]:
-    facts, tokens = enrich.extract_facts(chat, c.heading_path, c.text)
-    return {"items": facts}, tokens
+def _add_facts(chunks: list[Chunk], chat, detail: dict) -> None:
+    """Key facts for every chunk that has none. One call each, so they run side by side.
+
+    The calls wait on the network. Reading and writing the chunks stays on this thread, because a
+    database session is not thread safe. A figure gets no facts: its text already lists its values.
+    """
+    todo = [c for c in chunks if c.facts is None and c.kind != "figure"]
+    with ThreadPoolExecutor(max_workers=FACT_THREADS) as pool:
+        futures = [pool.submit(enrich.extract_facts, chat, c.heading_path, c.text) for c in todo]
+        for c, future in zip(todo, futures, strict=True):
+            try:
+                items, tokens = future.result()
+            except ProviderError as e:
+                detail["failed"] += 1
+                log.warning("facts failed for chunk %s: %s", c.id, e)
+                continue
+            c.facts = {"items": items}
+            detail["facts"] += 1
+            detail["tokens"] += tokens
 
 
 @queue.task(name="embed_version")

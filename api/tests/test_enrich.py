@@ -106,3 +106,27 @@ def test_figures_can_be_switched_off(tmp_path):
     raw = _pdf_raw(tmp_path, [(200, 100)])
     chunks, _ = chunk_pages(raw, figures=False)
     assert all(c.kind != "figure" for c in chunks)
+
+
+def test_facts_are_added_to_every_chunk_except_figures():
+    from types import SimpleNamespace
+
+    from app.tasks import _add_facts
+
+    answer = Facts(facts=[{"kind": "number", "subject": "limit", "value": "5"}])
+    chat = FakeChat({Facts: answer})
+    chunks = [
+        SimpleNamespace(id=i, kind=kind, heading_path="1. A", text="x", facts=have)
+        for i, (kind, have) in enumerate(
+            [("text", None), ("table", None), ("figure", None), ("text", {"items": []})]
+        )
+    ]
+    detail = {"facts": 0, "failed": 0, "tokens": 0}
+    _add_facts(chunks, chat, detail)
+    assert [c.facts for c in chunks] == [
+        {"items": [{"kind": "number", "subject": "limit", "value": "5"}]},
+        {"items": [{"kind": "number", "subject": "limit", "value": "5"}]},
+        None,
+        {"items": []},
+    ]
+    assert detail == {"facts": 2, "failed": 0, "tokens": 30}
