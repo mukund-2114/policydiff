@@ -12,6 +12,7 @@ import pymupdf
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
+from app.auth import audit
 from app.config import get_settings
 from app.db.session import get_engine
 from app.jobs import enqueue_chunk, enqueue_embed, enqueue_enrich, queue
@@ -259,4 +260,15 @@ def scan_version(scan_id: str) -> None:
             # A scan where the judge never answered is a failure, not an empty result.
             ok = stats.failed == 0 or stats.judged > 0
             finish(scan, "done" if ok else "failed", {**snapshot, "stats": asdict(stats)})
+        audit(
+            db,
+            None,
+            scan.workspace_id,
+            "scan_finish",
+            scan_id=str(scan.id),
+            status=scan.status,
+            model=snapshot["chat"],
+            judge_calls=scan.judge_calls,
+            tokens=scan.tokens,
+        )
         db.commit()

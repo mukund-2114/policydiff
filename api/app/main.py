@@ -7,7 +7,7 @@ from app.auth import bootstrap_admin
 from app.config import PRODUCT_NAME
 from app.db.session import get_engine
 from app.jobs import open_for_api
-from app.routers import ask, documents, findings, health, samples, scans, search, settings
+from app.routers import ask, audit, documents, findings, health, samples, scans, search, settings
 from app.routers import auth as auth_router
 
 
@@ -28,4 +28,5 @@ app.include_router(search.router, prefix="/api")
 app.include_router(scans.router, prefix="/api")
 app.include_router(findings.router, prefix="/api")
 app.include_router(ask.router, prefix="/api")
+app.include_router(audit.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")

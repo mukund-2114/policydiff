@@ -134,7 +134,11 @@ export type AnswerItem = {
 };
 export type AnswerKey = { conflicts: AnswerItem[]; near_misses: AnswerItem[] };
 
-export type ModelPick = { provider: "openai" | "anthropic" | "ollama"; model: string };
+export type ModelPick = {
+  provider: "openai" | "openai_compatible" | "anthropic" | "bedrock" | "ollama";
+  model: string;
+  base_url?: string | null;
+};
 export type RerankPick = { provider: "local" | "llm" | "cohere"; model: string | null };
 export type SettingsData = {
   chat: ModelPick;
@@ -155,6 +159,15 @@ export type PreviewResult = {
   library_chunks: number;
   full_scan_tokens: number;
   seconds: number;
+};
+
+export type AuditEvent = {
+  id: string;
+  at: string;
+  user: string | null;
+  action: string;
+  target: string | null;
+  detail: Record<string, unknown> | null;
 };
 
 export type AskResult = {
@@ -219,6 +232,8 @@ export const api = {
   findings: () => request<Finding[]>("/findings"),
   updateFinding: (id: string, changes: Partial<Pick<Finding, "status" | "owner" | "resolution_note">>) =>
     request<Finding>(`/findings/${id}`, { method: "PATCH", body: JSON.stringify(changes) }),
+  audit: (action: string, limit: number, offset: number) =>
+    request<AuditEvent[]>(`/audit?limit=${limit}&offset=${offset}${action ? `&action=${encodeURIComponent(action)}` : ""}`),
   settings: () => request<SettingsData>("/settings"),
   saveSettings: (body: Partial<Pick<SettingsData, "chat" | "vision" | "rerank">> & { keys?: Record<string, string | null> }) =>
     request<SettingsData>("/settings", { method: "PUT", body: JSON.stringify(body) }),

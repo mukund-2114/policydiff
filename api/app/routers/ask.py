@@ -67,7 +67,14 @@ def ask_question(
     except ProviderError as e:
         raise HTTPException(status_code=502, detail=str(e)) from None
     # The audit log keeps that a question was asked, not what it said.
-    auth.audit(db, user, user.workspace_id, "ask", as_of=str(body.as_of) if body.as_of else None)
+    auth.audit(
+        db,
+        user,
+        user.workspace_id,
+        "ask",
+        as_of=str(body.as_of) if body.as_of else None,
+        tokens=result["tokens"],
+    )
     db.commit()
     return {
         **result,

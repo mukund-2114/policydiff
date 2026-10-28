@@ -146,6 +146,12 @@ export function Findings() {
             </option>
           ))}
         </select>
+        <a
+          className={button}
+          href={`/api/findings.csv?min_confidence=${min}${status ? `&status=${status}` : ""}${type ? `&type=${type}` : ""}`}
+        >
+          Export CSV
+        </a>
         <p className="text-muted">
           {rows.length} shown
           {matching.length > rows.length ? `, ${matching.length - rows.length} hidden by confidence` : ""}. j and k move,

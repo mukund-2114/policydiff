@@ -3,6 +3,7 @@ import { useState } from "react";
 import { ApiError, api, type User } from "./api";
 import { Nav, BrandMark } from "./components/Nav";
 import { Ask } from "./pages/Ask";
+import { Audit } from "./pages/Audit";
 import { AnswerKey } from "./pages/AnswerKey";
 import { Compare } from "./pages/Compare";
 import { DocumentDetail } from "./pages/DocumentDetail";
@@ -111,6 +112,8 @@ function Shell({ user }: { user: User }) {
         <Findings />
       ) : page === "ask" ? (
         <Ask />
+      ) : page === "audit" ? (
+        <Audit />
       ) : page === "settings" ? (
         <Settings />
       ) : page === "search" ? (

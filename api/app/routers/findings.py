@@ -4,6 +4,7 @@ import uuid
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session, aliased
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session, aliased
 from app import auth
 from app.db.session import get_db
 from app.models import Chunk, Document, DocumentVersion, Finding, PairJudgment, User
+from app.routers.audit import csv_response
 
 router = APIRouter(tags=["findings"])
 
@@ -130,6 +132,67 @@ def findings(
     if type:
         q = q.where(Finding.type == type)
     return [_out(r) for r in db.execute(q.order_by(Finding.confidence.desc())).all()]
+
+
+@router.get("/findings.csv")
+def findings_csv(
+    status: str | None = None,
+    type: str | None = None,
+    min_confidence: float = 0.0,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """The review queue as a spreadsheet, with the same filters as the list."""
+    q = _select(user.workspace_id).where(Finding.confidence >= min_confidence)
+    if status:
+        q = q.where(Finding.status == status)
+    if type:
+        q = q.where(Finding.type == type)
+    items = [_out(r) for r in db.execute(q.order_by(Finding.confidence.desc())).all()]
+    return csv_response(
+        "findings.csv",
+        [
+            "id",
+            "status",
+            "type",
+            "confidence",
+            "owner",
+            "explanation",
+            "document_a",
+            "version_a",
+            "section_a",
+            "page_a",
+            "quote_a",
+            "document_b",
+            "version_b",
+            "section_b",
+            "page_b",
+            "quote_b",
+            "note",
+        ],  # fmt: skip
+        (
+            [
+                f.id,
+                f.status,
+                f.type,
+                f.confidence,
+                f.owner,
+                f.explanation,
+                f.a.title,
+                f.a.version_label,
+                f.a.heading_path,
+                f.a.page,
+                f.quote_a,
+                f.b.title,
+                f.b.version_label,
+                f.b.heading_path,
+                f.b.page,
+                f.quote_b,
+                f.resolution_note,
+            ]  # fmt: skip
+            for f in items
+        ),
+    )
 
 
 @router.patch("/findings/{finding_id}", response_model=FindingOut)
