@@ -63,6 +63,9 @@ export type Scan = {
 export type FindingSide = {
   version_id: string;
   boxes: { page: number; bbox: number[] }[];
+  kind: "text" | "table" | "figure";
+  summary: string | null;
+  facts: { kind: string; subject: string; value: string }[];
   title: string; version_label: string; heading_path: string | null; page: number | null };
 
 export type Finding = {

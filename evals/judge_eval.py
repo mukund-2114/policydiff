@@ -47,7 +47,11 @@ def squash(text):
 def find_chunk(chunks, side):
     """The chunk of side['doc'] that holds the quoted clause or table row, or None."""
     if side["kind"] == "figure":
-        return None  # figures are not chunked until S11
+        # The figure chunk of that document whose reading mentions the labelled value.
+        for c in chunks.get(side["doc"], []):
+            if c.kind == "figure" and str(side["value"]) in c.text:
+                return c
+        return None
     is_table = side["kind"] == "table"
     wanted = (
         [squash(c) for c in side["quote"].split(" | ")]
@@ -137,20 +141,17 @@ def main():
                 }
             )
 
-        print(
-            f"Scorable planted conflicts: {n_conflicts} of {len(data['conflicts'])} (figures wait for S11)"
-        )
+        print(f"Scorable planted conflicts: {n_conflicts} of {len(data['conflicts'])} ")
         print(f"Pairs judged: {len(judged)}   Findings: {len(findings)}")
         unverified = sum(j.verdict == "unverified" for j in judged.values())
         print(f"Dropped for a quote not in the text: {unverified}\n")
 
+        by_kind = {}  # modality -> [found, scored]
         print("Planted conflicts")
         for item in data["conflicts"]:
             key = next((k for k, v in truth.items() if v == item["id"]), None)
             if key is None:
-                print(
-                    f"  {item['id']} {item['type']:20} SKIP (side not found or figure)"
-                )
+                print(f"  {item['id']} {item['type']:20} SKIP (side not found)")
                 continue
             if any(f["key"] == key for f in findings):
                 state = "found"
@@ -158,7 +159,15 @@ def main():
                 state = f"JUDGE MISS (verdict {judged[key].verdict})"
             else:
                 state = "FUNNEL MISS (never judged)"
-            print(f"  {item['id']} {item['type']:20} {state}")
+            tally = by_kind.setdefault(item["modality"], [0, 0])
+            tally[0] += state == "found"
+            tally[1] += 1
+            print(f"  {item['id']} {item['type']:20} {item['modality']:7} {state}")
+
+        print()
+        print("Found by kind")
+        for kind, (got, of) in sorted(by_kind.items()):
+            print(f"  {kind:7} {got} of {of}")
 
         unlabelled = [f for f in findings if f["key"] not in truth]
         print("\nFindings that are not planted conflicts")

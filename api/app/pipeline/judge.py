@@ -15,7 +15,7 @@ from pydantic import BaseModel, ValidationError
 
 from app.providers.base import ChatModel, Message, ProviderError
 
-PROMPT_VERSION = "judge-2"  # judge-2 adds the extracted facts to each clause
+PROMPT_VERSION = "judge-3"  # judge-2 added the facts; judge-3 stops flagging general scope text
 
 ConflictType = Literal[
     "numeric_mismatch",
@@ -51,9 +51,11 @@ class Clause:
 
 SYSTEM = """You compare two clauses from a company's policies and decide whether they contradict each other.
 
-A conflict means someone cannot follow both clauses at once for the same situation: different numbers or deadlines for the same thing, one clause allowing what the other forbids, two policies claiming to govern the same case with different rules, the same term defined differently, or a reference to a policy or form that the other clause shows is replaced.
+A conflict means someone cannot follow both clauses at once for the same situation: different numbers or deadlines for the same thing, one clause allowing what the other forbids, two policies assigning different rules or different approvers to the same specific case, the same term defined differently, or a reference to a policy or form that the other clause shows is replaced.
 
-Not a conflict: the same rule restated in other words, clauses about different situations, or one clause adding detail that does not contradict the other. Use "no_conflict" for these. Use "possible_conflict" when the clauses may contradict but one of them is unclear or depends on context you cannot see.
+Not a conflict, answer "no_conflict": the same rule restated in other words; clauses about different situations; one clause adding detail that does not contradict the other; a general statement of purpose, scope or who the policy applies to, next to another policy's general statement (two policies may cover the same people); a clause that only points to another policy; a general rule next to a specific rule that fits inside it. When two clauses sit on the same topic but you cannot name a value or obligation that the two disagree on, answer "no_conflict".
+
+Use "possible_conflict" only when you can name a specific value or obligation that may clash but one clause is unclear or depends on context you cannot see.
 
 Rules for your answer:
 - quote_a and quote_b must be copied exactly, character for character, from clause A and clause B. Each is the one sentence (or table row) that conflicts. Use empty strings when the verdict is no_conflict.

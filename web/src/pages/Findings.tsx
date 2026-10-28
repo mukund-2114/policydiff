@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Finding, type FindingSide } from "../api";
 import { PdfClause } from "../components/PdfClause";
+import { WhyPair } from "../components/WhyPair";
 import { button, field, panel, primary } from "../ui";
 
 // The review queue. The list on the left is filtered by status and type, the finding you pick opens
@@ -16,6 +17,11 @@ const TYPE = {
   definition_mismatch: "Definitions differ",
   outdated_reference: "Outdated reference",
 } as Record<string, string>;
+
+// Findings below this confidence are hidden until you lower it. The eval in evals/judge_eval.py
+// prints precision and recall at each cut-off; DEFAULT_MIN is the one chosen from it.
+const DEFAULT_MIN = 0.9;
+const MIN_OPTIONS = [0, 0.7, 0.8, 0.9];
 
 const STATUS = ["open", "confirmed", "dismissed", "resolved"];
 
@@ -48,6 +54,7 @@ function Detail({ f, onDecide, busy }: { f: Finding; onDecide: (status: string, 
         <span className="ml-auto text-muted">{f.status}</span>
       </div>
       <p>{f.explanation}</p>
+      <WhyPair f={f} />
       <button className={button} onClick={() => setLarge(!large)}>
         {large ? "Show pages side by side" : "Enlarge pages"}
       </button>
@@ -83,11 +90,13 @@ export function Findings() {
   const qc = useQueryClient();
   const [status, setStatus] = useState("open");
   const [type, setType] = useState("");
+  const [min, setMin] = useState(DEFAULT_MIN);
   const [index, setIndex] = useState(0);
 
   const findings = useQuery({ queryKey: ["findings"], queryFn: api.findings });
   const all = findings.data ?? [];
-  const rows = all.filter((f) => (!status || f.status === status) && (!type || f.type === type));
+  const matching = all.filter((f) => (!status || f.status === status) && (!type || f.type === type));
+  const rows = matching.filter((f) => f.confidence >= min);
   const current: Finding | undefined = rows[Math.min(index, rows.length - 1)];
 
   const decide = useMutation({
@@ -130,13 +139,27 @@ export function Findings() {
             </option>
           ))}
         </select>
-        <p className="text-muted">{rows.length} shown. j and k move, c confirms, d dismisses, r resolves.</p>
+        <select className={`${field} w-48`} value={min} onChange={(e) => (setMin(Number(e.target.value)), setIndex(0))}>
+          {MIN_OPTIONS.map((m) => (
+            <option key={m} value={m}>
+              {m === 0 ? "Any confidence" : `Confidence ${m * 100}% or more`}
+            </option>
+          ))}
+        </select>
+        <p className="text-muted">
+          {rows.length} shown
+          {matching.length > rows.length ? `, ${matching.length - rows.length} hidden by confidence` : ""}. j and k move,
+          c confirms, d dismisses, r resolves.
+        </p>
       </div>
       {findings.isSuccess && all.length === 0 && (
         <p className="text-muted">No findings yet. Open a document and press Scan for conflicts.</p>
       )}
       {findings.isSuccess && all.length > 0 && rows.length === 0 && (
-        <p className="text-muted">Nothing matches these filters. Choose All statuses to see decided findings.</p>
+        <p className="text-muted">
+          Nothing matches these filters. Choose All statuses to see decided findings, or Any confidence to see weaker
+          ones.
+        </p>
       )}
       {decide.isError && <p className="text-danger">{(decide.error as Error).message}</p>}
       {rows.length > 0 && (

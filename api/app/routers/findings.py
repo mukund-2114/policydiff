@@ -27,6 +27,9 @@ class SideOut(BaseModel):
     heading_path: str | None
     page: int | None
     boxes: list[BoxOut]  # where the clause sits on its pages, for the highlight
+    kind: str  # text, table or figure
+    summary: str | None  # what the search saw instead of the table, if there was a summary
+    facts: list[dict]  # what the judge was shown next to the text
 
 
 class FindingOut(BaseModel):
@@ -94,6 +97,9 @@ def _out(row) -> FindingOut:
             heading_path=c1.heading_path,
             page=c1.page,
             boxes=_boxes(c1),
+            kind=c1.kind,
+            summary=c1.summary,
+            facts=(c1.facts or {}).get("items", []),
         ),
         b=SideOut(
             version_id=str(v2.id),
@@ -102,6 +108,9 @@ def _out(row) -> FindingOut:
             heading_path=c2.heading_path,
             page=c2.page,
             boxes=_boxes(c2),
+            kind=c2.kind,
+            summary=c2.summary,
+            facts=(c2.facts or {}).get("items", []),
         ),
         scores=j.scores,
     )

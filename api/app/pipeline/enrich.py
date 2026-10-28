@@ -48,8 +48,10 @@ TABLE_PROMPT = (
 )
 FIGURE_PROMPT = (
     "Describe this figure from a company policy. Give one or two sentences on what it shows, and "
-    "list every labelled value exactly as drawn, with its unit, one per entry. Do not guess a "
-    "value that is not visible. " + SAFETY
+    "list every value in the figure, one per entry. Each entry must name what the value measures "
+    "and give the value with its unit, copied from the labels in the picture, for example "
+    "'Long-haul pilots: 13 hours' or 'Length: 55 cm'. Never list a bare number. Do not guess a "
+    "label or value that is not visible. " + SAFETY
 )
 FACTS_PROMPT = (
     "List the checkable facts in this policy text: numbers with units, durations, money amounts, "

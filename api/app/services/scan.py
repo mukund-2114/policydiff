@@ -1,12 +1,13 @@
 """The conflict scan: every clause of one version, against everything else that is current.
 
 For each clause it runs the funnel (search, rerank, MMR), skips pairs already judged, asks the
-judge about the rest, checks the quotes, and stores the result. Each pair is saved as soon as it is
-judged, so a scan that stops half way keeps its work, and running it again skips what is done
-(the pair cache).
+judge about the rest, checks the quotes, and stores the result. One clause's pairs are asked about
+in parallel and saved together, so a scan that stops half way keeps its work, and running it again
+skips what is done (the pair cache).
 """
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -29,6 +30,8 @@ from app.retrieval import funnel
 from app.retrieval.search import hybrid_search
 
 log = logging.getLogger(__name__)
+
+JUDGE_THREADS = 6  # model calls in flight at once, per clause
 
 
 @dataclass
@@ -54,9 +57,9 @@ def _clause(db: Session, chunk: Chunk) -> Clause:
     return Clause(d.title, v.version_label, v.effective_from, chunk.heading_path, chunk.text, facts)
 
 
-def _judge_one(db, scan, source: Chunk, hit: dict, chat: ChatModel, stats: ScanStats) -> None:
+def _store(db, scan, source: Chunk, hit: dict, out, tokens: int, stats: ScanStats) -> None:
+    """Save one judged pair. Runs on the scan's own thread, because a session is not thread safe."""
     cand: Chunk = hit["chunk"]
-    out, tokens = judge_pair(chat, _clause(db, source), _clause(db, cand))
     stats.judged += 1
     stats.tokens += tokens
     verdict = out.verdict
@@ -126,6 +129,7 @@ def run_scan(
         db.commit()
         text = embedding_input(chunk.context_header, chunk.text, chunk.summary)
         hits = hybrid_search(db, scan.workspace_id, text, chunk.embedding, version.id)
+        todo = []
         for hit in funnel.apply_funnel(text, hits, reranker):
             if not hit["kept"]:
                 continue
@@ -135,15 +139,23 @@ def run_scan(
                 stats.cached += 1
                 continue
             done_pairs.add(key)
-            try:
-                _judge_one(db, scan, chunk, hit, chat, stats)
-            except ProviderError as e:  # one bad pair must not stop the scan
-                stats.failed += 1
-                stats.errors.append(str(e)[:200])
-                done_pairs.discard(key)
-                log.warning("judge failed for pair %s: %s", key, e)
-            scan.judge_calls, scan.tokens = stats.judged, stats.tokens
-            db.commit()
+            todo.append((key, hit, _clause(db, chunk), _clause(db, hit["chunk"])))
+        # The model calls wait on the network, so a clause's pairs are asked about together.
+        # Everything that touches the database stays on this thread.
+        with ThreadPoolExecutor(max_workers=JUDGE_THREADS) as pool:
+            futures = [pool.submit(judge_pair, chat, a, b) for _, _, a, b in todo]
+            for (key, hit, _, _), future in zip(todo, futures, strict=True):
+                try:
+                    out, tokens = future.result()
+                except ProviderError as e:  # one bad pair must not stop the scan
+                    stats.failed += 1
+                    stats.errors.append(str(e)[:200])
+                    done_pairs.discard(key)
+                    log.warning("judge failed for pair %s: %s", key, e)
+                    continue
+                _store(db, scan, chunk, hit, out, tokens, stats)
+        scan.judge_calls, scan.tokens = stats.judged, stats.tokens
+        db.commit()
     return stats
 
 

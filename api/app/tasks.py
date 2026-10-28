@@ -158,12 +158,13 @@ def _enrich_chunk(c: Chunk, chat, vision, pdf, settings, detail: dict) -> None:
         elif settings.summarize_media and c.kind == "figure" and c.text == FIGURE_PLACEHOLDER:
             box = c.bbox["boxes"][0]
             page = pdf[box["page"] - 1]
-            png = page.get_pixmap(clip=pymupdf.Rect(*box["bbox"]), dpi=150).tobytes("png")
+            png = page.get_pixmap(clip=pymupdf.Rect(*box["bbox"]), dpi=200).tobytes("png")
             reading, tokens = enrich.read_figure(vision, c.heading_path, png)
             c.text = enrich.figure_text(reading)
             detail["figures"] += 1
             detail["tokens"] += tokens
-        if settings.extract_facts and c.facts is None and c.text != FIGURE_PLACEHOLDER:
+        # A figure's text already lists its labelled values, so it gets no separate facts.
+        if settings.extract_facts and c.facts is None and c.kind != "figure":
             c.facts, tokens = _facts(chat, c)
             detail["facts"] += 1
             detail["tokens"] += tokens
