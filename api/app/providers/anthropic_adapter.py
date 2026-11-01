@@ -1,7 +1,27 @@
+import base64
+from collections.abc import Iterator
+
 from anthropic import Anthropic
 from pydantic import BaseModel
 
 from app.providers.base import Message, ProviderError, Response
+
+
+def _content(m: Message):
+    if not m.images:
+        return m.content
+    blocks = [
+        {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": "image/png",
+                "data": base64.b64encode(png).decode(),
+            },
+        }
+        for png in m.images
+    ]
+    return [*blocks, {"type": "text", "text": m.content}]
 
 
 class AnthropicChat:
@@ -13,7 +33,7 @@ class AnthropicChat:
 
     def generate(self, messages: list[Message], schema: type[BaseModel] | None = None) -> Response:
         system = "\n\n".join(m.content for m in messages if m.role == "system")
-        turns = [{"role": m.role, "content": m.content} for m in messages if m.role != "system"]
+        turns = [{"role": m.role, "content": _content(m)} for m in messages if m.role != "system"]
         kwargs: dict = {"model": self.model, "max_tokens": 4096, "messages": turns}
         if system:
             kwargs["system"] = system
@@ -42,3 +62,15 @@ class AnthropicChat:
             input_tokens=r.usage.input_tokens,
             output_tokens=r.usage.output_tokens,
         )
+
+    def stream(self, messages: list[Message]) -> Iterator[tuple[str, object]]:
+        """Pieces of the answer as they are written, then the token count."""
+        system = "\n\n".join(m.content for m in messages if m.role == "system")
+        turns = [{"role": m.role, "content": _content(m)} for m in messages if m.role != "system"]
+        kwargs: dict = {"model": self.model, "max_tokens": 2048, "messages": turns}
+        if system:
+            kwargs["system"] = system
+        with self._client.messages.stream(**kwargs) as stream:
+            yield from (("text", piece) for piece in stream.text_stream)
+            usage = stream.get_final_message().usage
+        yield "usage", usage.input_tokens + usage.output_tokens

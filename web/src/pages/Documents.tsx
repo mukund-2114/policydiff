@@ -4,7 +4,7 @@ import { ApiError, api, type User } from "../api";
 import { compareHref, go } from "../router";
 import { button, field, panel, primary, td, th } from "../ui";
 
-const ACTIVE = ["queued", "parsing"];
+const ACTIVE = ["queued", "parsing", "parsed", "chunking", "chunked", "embedding"];
 
 function UploadForm({ collections, onDone }: { collections: string[]; onDone: () => void }) {
   const qc = useQueryClient();
@@ -13,7 +13,10 @@ function UploadForm({ collections, onDone }: { collections: string[]; onDone: ()
     mutationFn: (form: FormData) => api.upload(form),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["documents"] });
-      if (!res.duplicate) onDone();
+      if (!res.duplicate) {
+        onDone();
+        go(`#/documents/${res.version.id}`); // open it, so the steps can be watched as they run
+      }
     },
   });
 
@@ -98,6 +101,15 @@ export function Documents({ user }: { user: User }) {
     refetchInterval: (q) => (q.state.data?.some((d) => ACTIVE.includes(d.status)) ? 1500 : false),
   });
 
+  const qc = useQueryClient();
+  const remove = useMutation({
+    mutationFn: (id: string) => api.remove(id),
+    onSuccess: (_, id) => {
+      setSelected((s) => s.filter((x) => x !== id));
+      qc.invalidateQueries({ queryKey: ["documents"] });
+    },
+  });
+
   const rows = docs.data ?? [];
   const canUpload = user.role === "admin" || user.role === "reviewer";
   const toggle = (id: string) =>
@@ -105,6 +117,11 @@ export function Documents({ user }: { user: User }) {
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 px-4 py-6">
+      {remove.isError && (
+        <p role="alert" className="text-danger">
+          {(remove.error as Error).message}
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="mr-auto text-lg font-semibold">Documents</h1>
         <button
@@ -136,6 +153,7 @@ export function Documents({ user }: { user: User }) {
               <th className={th}>Effective</th>
               <th className={th}>Pages</th>
               <th className={th}>Status</th>
+              {user.role === "admin" && <th className={th}></th>}
             </tr>
           </thead>
           <tbody>
@@ -158,15 +176,27 @@ export function Documents({ user }: { user: User }) {
                 <td className={`${td} font-mono`}>{d.version_label}</td>
                 <td className={`${td} font-mono`}>{d.effective_from ?? ""}</td>
                 <td className={`${td} font-mono`}>{d.pages ?? ""}</td>
-                <td className={`${td} font-mono ${d.status === "failed" ? "text-danger" : ""}`}>
+                <td className={`${td} font-mono ${d.status === "failed" ? "text-danger" : d.status === "superseded" ? "text-muted" : ""}`}>
                   {d.status}
+                  {d.status === "superseded" && d.effective_to ? ` on ${d.effective_to}` : ""}
                   {d.failed_stage ? ` (${d.failed_stage})` : ""}
                 </td>
+                {user.role === "admin" && (
+                  <td className={td}>
+                    <button
+                      className="text-danger hover:underline"
+                      disabled={remove.isPending}
+                      onClick={() => window.confirm(`Delete ${d.title} v${d.version_label}? This removes its file, chunks and findings.`) && remove.mutate(d.id)}
+                    >
+                      Delete
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
             {docs.isSuccess && rows.length === 0 && (
               <tr>
-                <td className={`${td} text-muted`} colSpan={7}>
+                <td className={`${td} text-muted`} colSpan={8}>
                   No documents yet. Upload a PDF to start.
                 </td>
               </tr>

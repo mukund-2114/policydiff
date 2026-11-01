@@ -1,5 +1,6 @@
 # Picks the provider and model for each job. Keys come from environment variables, never from this file.
-# Providers: openai, anthropic, ollama, local (reranker only), llm (reranker using the chat model)
+# Chat providers: openai, anthropic, bedrock, openai_compatible (needs base_url), ollama.
+# Reranker providers: local, llm (the chat model), cohere. The Settings page overrides this file.
 chat:
   provider: openai
   model: gpt-5-mini
@@ -7,8 +8,10 @@ embed:
   provider: openai
   model: text-embedding-3-small
   dims: 1536
+# local: a small cross-encoder that runs in the container, nothing is sent out (downloads once).
+# llm: the chat model scores all candidates in one call. cohere: hosted Cohere Rerank (needs COHERE_API_KEY).
 rerank:
-  provider: llm
+  provider: local
 vision:
   provider: openai
   model: gpt-5-mini

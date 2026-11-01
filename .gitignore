@@ -8,3 +8,7 @@ node_modules/
 dist/
 data/
 build/
+# The 15 demo PDFs are small and let a new install load the demo without a browser to build them.
+!evals/northwind/build/
+evals/northwind/build/*
+!evals/northwind/build/pdf/

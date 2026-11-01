@@ -17,11 +17,24 @@ class Settings(BaseSettings):
     embed_dims: int = 1536
     openai_api_key: str = ""
     anthropic_api_key: str = ""
+    cohere_api_key: str = ""
+    aws_region: str = ""  # Bedrock only; credentials come from the usual AWS sources
+    model_cache_dir: str = ""  # where the local reranker keeps its downloaded model
     session_max_age_seconds: int = 60 * 60 * 12
     cookie_secure: bool = False  # set true when served over HTTPS
-    files_dir: str = "/data/files"  # uploaded PDFs and parser output
+    storage_backend: str = "local"  # "local" (a folder) or "s3" (any S3-compatible bucket)
+    files_dir: str = "/data/files"  # the folder, when storage_backend is local
+    s3_bucket: str = "policydiff"
+    s3_endpoint_url: str = ""  # MinIO or R2 address; leave empty for AWS
+    s3_region: str = ""
+    s3_access_key: str = ""  # leave both empty to use the machine's IAM role
+    s3_secret_key: str = ""
     samples_dir: str = "/samples"  # optional read-only folder with the Northwind demo corpus
     max_upload_mb: int = 25
+    # Chunk size and strategy are set on the Settings page (services/params.py).
+    # Enrichment. Moves to the per-workspace settings table in S13.
+    summarize_media: bool = True  # write a short summary for each table and figure
+    extract_facts: bool = True  # pull numbers, durations and obligations out of each chunk
 
 
 @lru_cache

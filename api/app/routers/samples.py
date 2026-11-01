@@ -2,8 +2,10 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
 
 from app import auth
+from app.db.session import get_db
 from app.models import User
 from app.services import samples
 
@@ -18,6 +20,19 @@ def _require_samples() -> None:
 @router.get("")
 def status(user: User = Depends(auth.current_user)):
     return {"available": samples.available()}
+
+
+@router.post("/load")
+def load_documents(
+    user: User = Depends(auth.require_role("admin", "reviewer")),
+    db: Session = Depends(get_db),
+):
+    """Add the 15 demo PDFs to the library, so a new install has something to scan."""
+    _require_samples()
+    result = samples.load_pdfs(db, user)
+    if result["added"] + result["already_there"] == 0:
+        raise HTTPException(status_code=404, detail="The sample PDFs are not in the sample folder")
+    return result
 
 
 @router.get("/policies")

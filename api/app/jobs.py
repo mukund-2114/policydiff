@@ -34,3 +34,19 @@ def open_for_api() -> Iterator[None]:
 
 def enqueue_parse(version_id: uuid.UUID) -> None:
     queue.configure_task("parse_version").defer(version_id=str(version_id))
+
+
+def enqueue_chunk(version_id: uuid.UUID) -> None:
+    queue.configure_task("chunk_version").defer(version_id=str(version_id))
+
+
+def enqueue_enrich(version_id: uuid.UUID) -> None:
+    queue.configure_task("enrich_version").defer(version_id=str(version_id))
+
+
+def enqueue_embed(version_id: uuid.UUID) -> None:
+    queue.configure_task("embed_version").defer(version_id=str(version_id))
+
+
+def enqueue_scan(scan_id: uuid.UUID) -> None:
+    queue.configure_task("scan_version").defer(scan_id=str(scan_id))

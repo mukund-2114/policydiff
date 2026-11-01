@@ -7,6 +7,7 @@ the answer key inside the app. If the folder is missing, the sample features swi
 
 import json
 import re
+from datetime import date
 from pathlib import Path
 
 import yaml
@@ -92,3 +93,35 @@ def answer_key() -> dict:
         "conflicts": [convert(c) for c in labels["conflicts"]],
         "near_misses": [convert(n) for n in labels["near_misses"]],
     }
+
+
+def load_pdfs(db, user) -> dict:
+    """Upload the 15 built demo PDFs the way a person would, so they go through the whole pipeline.
+
+    The title is the document code (EXP-001), because the labels and the evals name documents by
+    code. Files already in the library are recognised by their hash and skipped.
+    """
+    from app.services.ingest import register_upload
+
+    folder = root() / "build" / "pdf"
+    added = already = 0
+    missing = []
+    for p in sorted((root() / "policies").glob("*.md")):
+        meta = _meta(_split(p)[0])
+        pdf = folder / f"{meta['doc_id']}.pdf"
+        if not pdf.exists():
+            missing.append(meta["doc_id"])
+            continue
+        _, created = register_upload(
+            db,
+            user,
+            data=pdf.read_bytes(),
+            title=meta["doc_id"],
+            collection=meta["collection"],
+            version_label=meta["version"],
+            effective_from=date.fromisoformat(meta["effective"]),
+            owner_team=meta["owner"],
+        )
+        added += created
+        already += not created
+    return {"added": added, "already_there": already, "missing": missing}

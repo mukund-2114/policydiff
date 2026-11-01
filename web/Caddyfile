@@ -15,7 +15,10 @@
 		request_body {
 			max_size 30MB
 		}
-		reverse_proxy api:8000
+		reverse_proxy api:8000 {
+			# Send streamed answers to the browser as they are written, not in one block.
+			flush_interval -1
+		}
 	}
 	handle {
 		root * /srv

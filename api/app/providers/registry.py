@@ -11,28 +11,38 @@ from pydantic import BaseModel
 from app.config import get_settings
 from app.providers.anthropic_adapter import AnthropicChat
 from app.providers.base import ChatModel, Embedder, ProviderError, Reranker
+from app.providers.bedrock_adapter import BedrockChat
+from app.providers.cohere_rerank import CohereReranker
+from app.providers.local_rerank import LocalReranker
 from app.providers.ollama_adapter import OllamaChat, OllamaEmbedder
 from app.providers.openai_adapter import OpenAIChat, OpenAIEmbedder
 from app.providers.rerank import LLMReranker
+from app.services import runtime
 
-CLOUD_PROVIDERS = {"openai", "anthropic"}
+# openai_compatible is not here: it is a server you name (vLLM, LM Studio, a gateway), and the
+# egress check looks at its address instead.
+CLOUD_PROVIDERS = {"openai", "anthropic", "cohere", "bedrock"}
+
+
+DEFAULT_LOCAL_RERANKER = "Xenova/ms-marco-MiniLM-L-6-v2"  # about 80 MB
 
 
 class ChatCfg(BaseModel):
-    provider: Literal["openai", "anthropic", "ollama"]
+    provider: Literal["openai", "openai_compatible", "anthropic", "bedrock", "ollama"]
     model: str
     base_url: str | None = None
 
 
 class EmbedCfg(BaseModel):
-    provider: Literal["openai", "ollama"]
+    provider: Literal["openai", "openai_compatible", "ollama"]
     model: str
     dims: int
     base_url: str | None = None
 
 
 class RerankCfg(BaseModel):
-    provider: Literal["llm"] = "llm"
+    provider: Literal["llm", "local", "cohere"] = "llm"
+    model: str | None = None  # local and cohere only; each has a default
 
 
 class EgressCfg(BaseModel):
@@ -72,6 +82,8 @@ def check_egress(cfg: ModelsConfig) -> None:
                 f"egress.allow_cloud is false but {name} uses {part.provider}"
                 f" at {part.base_url or 'a public endpoint'}"
             )
+    if cfg.rerank.provider == "cohere":  # the other rerankers run here or use the chat model
+        raise ProviderError("egress.allow_cloud is false but rerank uses cohere")
 
 
 @lru_cache
@@ -86,26 +98,77 @@ def load_config() -> ModelsConfig:
     return cfg
 
 
-def build_chat(part: ChatCfg) -> ChatModel:
-    s = get_settings()
+def effective_config(override: dict | None = None) -> ModelsConfig:
+    """models.yaml with the Settings page choices laid on top. `override` tries choices unsaved."""
+    cfg = load_config().model_copy(deep=True)
+    data = runtime.stored_data() if override is None else override
+    for name in ("chat", "vision"):
+        if pick := data.get(name):
+            current = getattr(cfg, name)
+            same = current is not None and current.provider == pick["provider"]
+            # A pick without an address keeps the one in models.yaml, if the provider is the same.
+            base_url = pick.get("base_url") or (current.base_url if same else None)
+            setattr(
+                cfg,
+                name,
+                ChatCfg(provider=pick["provider"], model=pick["model"], base_url=base_url),
+            )
+    if pick := data.get("rerank"):
+        cfg.rerank = RerankCfg(**pick)
+    if pick := data.get("embed"):
+        # The size stays what models.yaml and EMBED_DIMS say: the column and the index are that
+        # size (Q13). A larger model is asked for vectors of that size instead (D56).
+        same = cfg.embed.provider == pick["provider"]
+        base_url = pick.get("base_url") or (cfg.embed.base_url if same else None)
+        cfg.embed = EmbedCfg(
+            provider=pick["provider"], model=pick["model"], dims=cfg.embed.dims, base_url=base_url
+        )
+    for name in ("chat", "vision"):
+        part = getattr(cfg, name)
+        if part is not None and part.provider == "openai_compatible" and not part.base_url:
+            raise ProviderError(f"{name}: an OpenAI-compatible server needs an address")
+    check_egress(cfg)
+    return cfg
+
+
+def build_chat(part: ChatCfg, fast: bool = False) -> ChatModel:
+    effort = "minimal" if fast else None  # see OpenAIChat: less thinking, quicker first word
     if part.provider == "openai":
-        return OpenAIChat(part.model, s.openai_api_key, part.base_url)
+        return OpenAIChat(part.model, runtime.secret("openai"), part.base_url, effort)
+    if part.provider == "openai_compatible":
+        if not part.base_url:
+            raise ProviderError("openai_compatible needs a base URL")
+        return OpenAIChat(part.model, runtime.secret("openai"), part.base_url)
     if part.provider == "anthropic":
-        return AnthropicChat(part.model, s.anthropic_api_key)
+        return AnthropicChat(part.model, runtime.secret("anthropic"))
+    if part.provider == "bedrock":
+        return BedrockChat(part.model, get_settings().aws_region)
     return OllamaChat(part.model, part.base_url or "http://ollama:11434")
 
 
-def get_chat() -> ChatModel:
-    return build_chat(load_config().chat)
+def get_chat(cfg: ModelsConfig | None = None, fast: bool = False) -> ChatModel:
+    """`fast` is for conversation: the same model, asked to think less before it answers."""
+    return build_chat((cfg or effective_config()).chat, fast)
 
 
-def get_embedder() -> Embedder:
-    e = load_config().embed
-    s = get_settings()
-    if e.provider == "openai":
-        return OpenAIEmbedder(e.model, e.dims, s.openai_api_key, e.base_url)
+def get_vision(cfg: ModelsConfig | None = None) -> ChatModel:
+    """The model that reads figures. `vision:` if set, otherwise the chat model."""
+    cfg = cfg or effective_config()
+    return build_chat(cfg.vision or cfg.chat)
+
+
+def get_embedder(cfg: ModelsConfig | None = None) -> Embedder:
+    e = (cfg or effective_config()).embed  # chosen on the Settings page, else models.yaml (D56)
+    if e.provider in ("openai", "openai_compatible"):
+        return OpenAIEmbedder(e.model, e.dims, runtime.secret("openai"), e.base_url)
     return OllamaEmbedder(e.model, e.dims, e.base_url or "http://ollama:11434")
 
 
-def get_reranker() -> Reranker:
-    return LLMReranker(get_chat())
+def get_reranker(cfg: ModelsConfig | None = None) -> Reranker:
+    cfg, s = cfg or effective_config(), get_settings()
+    r = cfg.rerank
+    if r.provider == "local":
+        return LocalReranker(r.model or DEFAULT_LOCAL_RERANKER, s.model_cache_dir or None)
+    if r.provider == "cohere":
+        return CohereReranker(r.model or "rerank-v3.5", runtime.secret("cohere"))
+    return LLMReranker(get_chat(cfg))

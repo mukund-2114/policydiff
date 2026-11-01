@@ -1,0 +1,23 @@
+# Opens a pull request when a dependency has a newer version, so CI tests the upgrade for you.
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /api
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+  - package-ecosystem: docker
+    directory: /api
+    schedule:
+      interval: monthly
+  - package-ecosystem: docker
+    directory: /web
+    schedule:
+      interval: monthly

@@ -10,7 +10,7 @@ COPY pyproject.toml uv.lock* ./
 RUN uv sync --no-install-project --no-dev
 
 COPY . .
-RUN useradd --system --uid 10001 appuser && mkdir -p /data/files && chown -R appuser /app /data/files
+RUN useradd --system --uid 10001 appuser && mkdir -p /data/files /data/models && chown -R appuser /app /data/files /data/models
 USER appuser
 
 ENV PATH="/app/.venv/bin:$PATH"

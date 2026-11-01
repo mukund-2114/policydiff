@@ -1,0 +1,215 @@
+"""The review queue: list findings, open one, and record what a reviewer decided."""
+
+import uuid
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.orm import Session, aliased
+
+from app import auth
+from app.db.session import get_db
+from app.models import Chunk, Document, DocumentVersion, Finding, PairJudgment, User
+from app.routers.audit import csv_response
+
+router = APIRouter(tags=["findings"])
+
+
+class BoxOut(BaseModel):
+    page: int
+    bbox: list[float]  # x0, y0, x1, y1 in PDF points, measured from the top left of the page
+
+
+class SideOut(BaseModel):
+    version_id: str
+    title: str
+    version_label: str
+    heading_path: str | None
+    page: int | None
+    boxes: list[BoxOut]  # where the clause sits on its pages, for the highlight
+    kind: str  # text, table or figure
+    summary: str | None  # what the search saw instead of the table, if there was a summary
+    facts: list[dict]  # what the judge was shown next to the text
+
+
+class FindingOut(BaseModel):
+    id: str
+    type: str
+    status: str
+    confidence: float
+    explanation: str
+    quote_a: str
+    quote_b: str
+    owner: str | None
+    resolution_note: str | None
+    a: SideOut
+    b: SideOut
+    scores: dict  # how the pair got here: ranks, rerank score, judge confidence
+
+
+class FindingUpdate(BaseModel):
+    """Only the fields that are sent change."""
+
+    status: Literal["open", "confirmed", "dismissed", "resolved"] | None = None
+    owner: str | None = None
+    resolution_note: str | None = None
+
+
+def _select(workspace_id: uuid.UUID):
+    """One row per finding with both chunks, versions and documents joined in."""
+    ca, cb = aliased(Chunk), aliased(Chunk)
+    va, vb = aliased(DocumentVersion), aliased(DocumentVersion)
+    da, dbb = aliased(Document), aliased(Document)
+    q = (
+        select(Finding, PairJudgment, ca, cb, va, vb, da, dbb)
+        .join(PairJudgment, PairJudgment.id == Finding.judgment_id)
+        .join(ca, ca.id == PairJudgment.chunk_a)
+        .join(cb, cb.id == PairJudgment.chunk_b)
+        .join(va, va.id == ca.version_id)
+        .join(vb, vb.id == cb.version_id)
+        .join(da, da.id == va.document_id)
+        .join(dbb, dbb.id == vb.document_id)
+        .where(Finding.workspace_id == workspace_id)
+    )
+    return q
+
+
+def _boxes(chunk: Chunk) -> list[BoxOut]:
+    return [BoxOut(**b) for b in (chunk.bbox or {}).get("boxes", [])]
+
+
+def _out(row) -> FindingOut:
+    f, j, c1, c2, v1, v2, d1, d2 = row
+    return FindingOut(
+        id=str(f.id),
+        type=f.type,
+        status=f.status,
+        confidence=f.confidence,
+        explanation=f.explanation,
+        quote_a=f.quote_a,
+        quote_b=f.quote_b,
+        owner=f.owner,
+        resolution_note=f.resolution_note,
+        a=SideOut(
+            version_id=str(v1.id),
+            title=d1.title,
+            version_label=v1.version_label,
+            heading_path=c1.heading_path,
+            page=c1.page,
+            boxes=_boxes(c1),
+            kind=c1.kind,
+            summary=c1.summary,
+            facts=(c1.facts or {}).get("items", []),
+        ),
+        b=SideOut(
+            version_id=str(v2.id),
+            title=d2.title,
+            version_label=v2.version_label,
+            heading_path=c2.heading_path,
+            page=c2.page,
+            boxes=_boxes(c2),
+            kind=c2.kind,
+            summary=c2.summary,
+            facts=(c2.facts or {}).get("items", []),
+        ),
+        scores=j.scores,
+    )
+
+
+@router.get("/findings", response_model=list[FindingOut])
+def findings(
+    status: str | None = None,
+    type: str | None = None,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+):
+    """Findings, most confident first. `status` and `type` narrow the list."""
+    q = _select(user.workspace_id)
+    if status:
+        q = q.where(Finding.status == status)
+    if type:
+        q = q.where(Finding.type == type)
+    return [_out(r) for r in db.execute(q.order_by(Finding.confidence.desc())).all()]
+
+
+@router.get("/findings.csv")
+def findings_csv(
+    status: str | None = None,
+    type: str | None = None,
+    min_confidence: float = 0.0,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """The review queue as a spreadsheet, with the same filters as the list."""
+    q = _select(user.workspace_id).where(Finding.confidence >= min_confidence)
+    if status:
+        q = q.where(Finding.status == status)
+    if type:
+        q = q.where(Finding.type == type)
+    items = [_out(r) for r in db.execute(q.order_by(Finding.confidence.desc())).all()]
+    return csv_response(
+        "findings.csv",
+        [
+            "id",
+            "status",
+            "type",
+            "confidence",
+            "owner",
+            "explanation",
+            "document_a",
+            "version_a",
+            "section_a",
+            "page_a",
+            "quote_a",
+            "document_b",
+            "version_b",
+            "section_b",
+            "page_b",
+            "quote_b",
+            "note",
+        ],  # fmt: skip
+        (
+            [
+                f.id,
+                f.status,
+                f.type,
+                f.confidence,
+                f.owner,
+                f.explanation,
+                f.a.title,
+                f.a.version_label,
+                f.a.heading_path,
+                f.a.page,
+                f.quote_a,
+                f.b.title,
+                f.b.version_label,
+                f.b.heading_path,
+                f.b.page,
+                f.quote_b,
+                f.resolution_note,
+            ]  # fmt: skip
+            for f in items
+        ),
+    )
+
+
+@router.patch("/findings/{finding_id}", response_model=FindingOut)
+def update_finding(
+    finding_id: uuid.UUID,
+    body: FindingUpdate,
+    user: User = Depends(auth.require_role("admin", "reviewer")),
+    db: Session = Depends(get_db),
+):
+    """Confirm, dismiss, resolve or reopen a finding, and record who did it."""
+    row = db.execute(_select(user.workspace_id).where(Finding.id == finding_id)).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    f = row[0]
+    changes = body.model_dump(exclude_unset=True)
+    for name, value in changes.items():
+        setattr(f, name, value)
+    auth.audit(db, user, user.workspace_id, "finding_update", finding_id=str(f.id), **changes)
+    db.commit()
+    return _out(row)
