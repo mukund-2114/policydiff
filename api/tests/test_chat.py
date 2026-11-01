@@ -116,3 +116,41 @@ def test_if_the_planner_fails_the_plain_rules_still_search():
     got = plan_search("and for contractors?", HISTORY, PlanChat(None))
     assert got.needs_policy_lookup is True
     assert got.search_query.startswith("How long do I have")
+
+
+def test_the_plan_asks_for_other_wordings_only_when_rewrites_are_on():
+    plan = SearchPlan(search_query="claim deadline", needs_policy_lookup=True)
+    chat = PlanChat(plan)
+    plan_search("deadline?", [], chat, rewrites=0)
+    assert "always an empty list" in chat.sent[0].content
+    plan_search("deadline?", [], chat, rewrites=3)
+    asked = chat.sent[0].content
+    assert "3 other wordings" in asked
+    assert "Never add a number" in asked  # a made-up value would pull in the wrong clauses
+
+
+def test_other_wordings_are_cleaned_and_cut_to_the_number_asked():
+    plan = SearchPlan(
+        search_query="claim deadline",
+        needs_policy_lookup=True,
+        alternatives=["  time  limit to file ", "Claim Deadline", "time limit to file", "a", "b"],
+    )
+    got = plan_search("deadline?", [], PlanChat(plan), rewrites=2)
+    assert got.alternatives == ["time limit to file", "a"]
+
+
+def test_a_plain_greeting_or_thanks_skips_the_lookup_and_the_model():
+    chat = PlanChat(SearchPlan(search_query="x", needs_policy_lookup=True))
+    for text in ("hello", "Thanks!", "thank you so much.", "  hi there ", "Good morning", "ok"):
+        assert plan_search(text, [], chat).needs_policy_lookup is False, text
+    assert chat.sent is None  # the model was never asked
+
+
+def test_a_message_that_only_starts_like_small_talk_is_still_looked_up():
+    chat = PlanChat(SearchPlan(search_query="refund rule", needs_policy_lookup=True))
+    for text in (
+        "hello, what is the refund rule",
+        "ok but how long do claims take",
+        "thanks. and for travel?",
+    ):
+        assert plan_search(text, [], chat).needs_policy_lookup is True, text

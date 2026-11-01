@@ -4,6 +4,12 @@ Run it inside the api container, where the database and the models are:
 
     docker compose --env-file ../.env exec -T api python - < ../evals/candidate_recall.py
 
+To see what multi-query adds, run it twice and compare the "Found after" lines:
+the second time with REWRITES=3 (that many extra wordings per clause, as scan_rewrites does):
+
+    docker compose --env-file ../.env exec -T -e REWRITES=3 api \
+        python - < ../evals/candidate_recall.py
+
 For each labelled conflict the two sides are found among the stored chunks. Each side is used as
 the query (the scan does this for every clause) and we check whether the other side comes back,
 first after search and RRF, then after the reranker and MMR. A conflict counts as found if either
@@ -12,6 +18,7 @@ those 2 conflicts are listed but left out of the score.
 """
 
 import json
+import os
 import sys
 
 from sqlalchemy import select
@@ -20,11 +27,13 @@ from sqlalchemy.orm import Session
 from app.db.session import get_engine
 from app.models import Chunk, Document, DocumentVersion, Workspace
 from app.pipeline.embed import embedding_input
-from app.providers.registry import get_reranker
+from app.providers.registry import get_chat, get_embedder, get_reranker
 from app.retrieval.funnel import apply_funnel
+from app.retrieval.multi_query import extra_queries
 from app.retrieval.search import hybrid_search
 
 LABELS = "/samples/labels.json"
+REWRITES = int(os.environ.get("REWRITES", "0"))  # extra wordings per clause, 0 to 5
 # Optional settings to try: threshold, how many to keep after MMR, MMR lambda.
 KNOBS = dict(zip(("threshold", "keep", "lam"), map(float, sys.argv[1:4]), strict=False))
 if "keep" in KNOBS:
@@ -53,6 +62,7 @@ def find_chunk(chunks, side):
 def main():
     labels = json.load(open(LABELS, encoding="utf-8"))["conflicts"]
     reranker = get_reranker()
+    chat, embedder = (get_chat(fast=True), get_embedder()) if REWRITES else (None, None)
     with Session(get_engine()) as db:
         ws = db.scalar(select(Workspace.id))
         rows = db.execute(
@@ -82,7 +92,10 @@ def main():
             scores = []
             for src, other in ((a, b), (b, a)):
                 text = embedding_input(src.context_header, src.text, src.summary)
-                hits = hybrid_search(db, ws, text, src.embedding, src.version_id)
+                extra = extra_queries(chat, embedder, text, REWRITES)[0] if REWRITES else []
+                hits = hybrid_search(
+                    db, ws, text, src.embedding, src.version_id, extra_queries=extra
+                )
                 hits = apply_funnel(text, hits, reranker, **KNOBS)
                 in_search |= any(h["chunk"].id == other.id for h in hits)
                 in_kept |= any(h["chunk"].id == other.id and h["kept"] for h in hits)

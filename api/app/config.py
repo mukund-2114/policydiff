@@ -31,9 +31,7 @@ class Settings(BaseSettings):
     s3_secret_key: str = ""
     samples_dir: str = "/samples"  # optional read-only folder with the Northwind demo corpus
     max_upload_mb: int = 25
-    # Chunking. Moves to the per-workspace settings table in S13.
-    chunk_max_tokens: int = 400
-    chunk_overlap_tokens: int = 50
+    # Chunk size and strategy are set on the Settings page (services/params.py).
     # Enrichment. Moves to the per-workspace settings table in S13.
     summarize_media: bool = True  # write a short summary for each table and figure
     extract_facts: bool = True  # pull numbers, durations and obligations out of each chunk

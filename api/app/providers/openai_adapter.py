@@ -94,7 +94,10 @@ class OpenAIEmbedder:
     def embed(self, texts: list[str]) -> list[list[float]]:
         out: list[list[float]] = []
         for i in range(0, len(texts), 256):
-            r = self._client.embeddings.create(model=self.model, input=texts[i : i + 256])
+            # The text-embedding-3 models can return shorter vectors on request. That is how the
+            # large model fits the 1536-dimension column (D56).
+            extra = {"dimensions": self.dims} if self.model.startswith("text-embedding-3") else {}
+            r = self._client.embeddings.create(model=self.model, input=texts[i : i + 256], **extra)
             out.extend(d.embedding for d in r.data)
         if out and len(out[0]) != self.dims:
             raise ProviderError(

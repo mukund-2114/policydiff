@@ -16,15 +16,25 @@ from sqlalchemy.orm import Session
 from app.models import Chunk, DocumentVersion
 from app.pipeline.embed import embedding_input
 from app.pipeline.judge import judge_pair, quotes_verified
-from app.providers.base import ChatModel, ProviderError, Reranker
+from app.providers.base import ChatModel, Embedder, ProviderError, Reranker
 from app.retrieval import funnel
+from app.retrieval.multi_query import extra_queries
 from app.retrieval.search import hybrid_search
+from app.services.params import PipelineParams
 from app.services.scan import JUDGE_THREADS, load_clause
 
 SAMPLE = 20
 
 
-def run_preview(db: Session, workspace_id: uuid.UUID, chat: ChatModel, reranker: Reranker) -> dict:
+def run_preview(
+    db: Session,
+    workspace_id: uuid.UUID,
+    chat: ChatModel,
+    reranker: Reranker,
+    params: PipelineParams,
+    embedder: Embedder | None = None,
+    rewriter: ChatModel | None = None,
+) -> dict:
     started = time.monotonic()
     ready = (
         select(Chunk)
@@ -38,11 +48,24 @@ def run_preview(db: Session, workspace_id: uuid.UUID, chat: ChatModel, reranker:
     library = db.scalar(select(func.count()).select_from(ready.subquery())) or 0
     sample = db.scalars(ready.order_by(func.random()).limit(SAMPLE)).all()
 
+    rewrite_tokens = 0
     pairs = {}  # pair key -> (clause A, clause B, source chunk, candidate chunk)
     for chunk in sample:
         text = embedding_input(chunk.context_header, chunk.text, chunk.summary)
-        hits = hybrid_search(db, workspace_id, text, chunk.embedding, chunk.version_id)
-        for hit in funnel.apply_funnel(text, hits, reranker):
+        extra = []
+        if embedder is not None and params.scan_rewrites:
+            extra, spent = extra_queries(rewriter or chat, embedder, text, params.scan_rewrites)
+            rewrite_tokens += spent
+        hits = hybrid_search(
+            db,
+            workspace_id,
+            text,
+            chunk.embedding,
+            chunk.version_id,
+            params=params,
+            extra_queries=extra,
+        )
+        for hit in funnel.apply_funnel(text, hits, reranker, **params.funnel()):
             if hit["kept"]:
                 key = funnel.pair_key(chunk.id, hit["chunk"].id)
                 if key not in pairs:
@@ -67,6 +90,7 @@ def run_preview(db: Session, workspace_id: uuid.UUID, chat: ChatModel, reranker:
                 result["conflicts"] += 1
             else:
                 result["possible"] += 1
+    result["tokens"] += rewrite_tokens  # the rewrites are part of what a scan costs
     per_clause = result["tokens"] / len(sample) if sample else 0
     result["library_chunks"] = library
     result["full_scan_tokens"] = round(per_clause * library)

@@ -115,6 +115,14 @@ def effective_config(override: dict | None = None) -> ModelsConfig:
             )
     if pick := data.get("rerank"):
         cfg.rerank = RerankCfg(**pick)
+    if pick := data.get("embed"):
+        # The size stays what models.yaml and EMBED_DIMS say: the column and the index are that
+        # size (Q13). A larger model is asked for vectors of that size instead (D56).
+        same = cfg.embed.provider == pick["provider"]
+        base_url = pick.get("base_url") or (cfg.embed.base_url if same else None)
+        cfg.embed = EmbedCfg(
+            provider=pick["provider"], model=pick["model"], dims=cfg.embed.dims, base_url=base_url
+        )
     for name in ("chat", "vision"):
         part = getattr(cfg, name)
         if part is not None and part.provider == "openai_compatible" and not part.base_url:
@@ -149,8 +157,8 @@ def get_vision(cfg: ModelsConfig | None = None) -> ChatModel:
     return build_chat(cfg.vision or cfg.chat)
 
 
-def get_embedder() -> Embedder:
-    e = load_config().embed  # the embedding model is not on the Settings page (D49)
+def get_embedder(cfg: ModelsConfig | None = None) -> Embedder:
+    e = (cfg or effective_config()).embed  # chosen on the Settings page, else models.yaml (D56)
     if e.provider in ("openai", "openai_compatible"):
         return OpenAIEmbedder(e.model, e.dims, runtime.secret("openai"), e.base_url)
     return OllamaEmbedder(e.model, e.dims, e.base_url or "http://ollama:11434")

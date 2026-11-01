@@ -15,6 +15,7 @@ from app.providers.base import ProviderError
 from app.providers.registry import get_embedder, get_reranker
 from app.retrieval.funnel import apply_funnel
 from app.retrieval.search import hybrid_search
+from app.services.params import PipelineParams, get_params
 
 router = APIRouter(tags=["search"])
 
@@ -60,9 +61,9 @@ def _out(hits: list[dict]) -> list[HitOut]:
     ]
 
 
-def _rerank(source_text: str, hits: list[dict]) -> list[dict]:
+def _rerank(source_text: str, hits: list[dict], params: PipelineParams) -> list[dict]:
     try:
-        return apply_funnel(source_text, hits, get_reranker())
+        return apply_funnel(source_text, hits, get_reranker(), **params.funnel())
     except ProviderError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
 
@@ -78,8 +79,11 @@ def search(
         vector = get_embedder().embed([body.query])[0]
     except ProviderError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
-    hits = hybrid_search(db, user.workspace_id, body.query, vector, body.exclude_version_id)
-    return _out(_rerank(body.query, hits))
+    params = get_params()
+    hits = hybrid_search(
+        db, user.workspace_id, body.query, vector, body.exclude_version_id, params=params
+    )
+    return _out(_rerank(body.query, hits, params))
 
 
 @router.get("/chunks/{chunk_id}/related", response_model=list[HitOut])
@@ -100,5 +104,8 @@ def related(
     if chunk.embedding is None:
         raise HTTPException(status_code=409, detail="This chunk has no vector yet")
     text = embedding_input(chunk.context_header, chunk.text, chunk.summary)
-    hits = hybrid_search(db, user.workspace_id, text, chunk.embedding, chunk.version_id)
-    return _out(_rerank(text, hits))
+    params = get_params()
+    hits = hybrid_search(
+        db, user.workspace_id, text, chunk.embedding, chunk.version_id, params=params
+    )
+    return _out(_rerank(text, hits, params))

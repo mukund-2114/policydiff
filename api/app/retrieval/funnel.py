@@ -8,11 +8,15 @@ too, so the cut can be inspected.
 from app.pipeline.embed import embedding_input
 from app.providers.base import Reranker
 from app.retrieval.rank import mmr
+from app.services.params import PipelineParams
 
-RELATED_THRESHOLD = 0.5  # rerank score a candidate needs to be worth judging (tuned in the eval)
-MAX_RERANKED = 8  # guide step 5
-MMR_LAMBDA = 0.8  # the guide says 0.6; at 0.6 the eval lost 2 of 23 partners (D41)
-MMR_KEEP = 5
+# The defaults come from PipelineParams, the one place the numbers are defined. The guide says
+# MMR lambda 0.6; at 0.6 the eval lost 2 of 23 partners (D41). An admin can change all of them.
+_D = PipelineParams()
+RELATED_THRESHOLD = _D.rerank_threshold  # rerank score a candidate needs to be worth judging
+MAX_RERANKED = _D.max_candidates  # guide step 5
+MMR_LAMBDA = _D.mmr_lambda
+MMR_KEEP = _D.final_candidates
 
 
 def pair_key(chunk_a, chunk_b) -> str:

@@ -25,9 +25,11 @@ from app.pipeline.judge import (
     numbers_differ,
     quotes_verified,
 )
-from app.providers.base import ChatModel, ProviderError, Reranker
+from app.providers.base import ChatModel, Embedder, ProviderError, Reranker
 from app.retrieval import funnel
+from app.retrieval.multi_query import extra_queries
 from app.retrieval.search import hybrid_search
+from app.services.params import PipelineParams, get_params
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +42,7 @@ class ScanStats:
     candidates: int = 0  # pairs that came out of the funnel
     cached: int = 0  # skipped: the same pair was judged before
     judged: int = 0
+    rewrites: int = 0  # extra queries searched (multi-query)
     findings: int = 0
     unverified: int = 0  # the judge reported a conflict but a quote was not in the text
     failed: int = 0  # the judge gave no usable answer twice
@@ -109,8 +112,18 @@ def _store(db, scan, source: Chunk, hit: dict, out, tokens: int, stats: ScanStat
 
 
 def run_scan(
-    db: Session, scan: Scan, version: DocumentVersion, chat: ChatModel, reranker: Reranker
+    db: Session,
+    scan: Scan,
+    version: DocumentVersion,
+    chat: ChatModel,
+    reranker: Reranker,
+    params: PipelineParams | None = None,
+    embedder: Embedder | None = None,
+    rewriter: ChatModel | None = None,
 ) -> ScanStats:
+    # `rewriter` writes the multi-query rewrites. It should be the quick, low-thinking chat: a
+    # rewrite is short, and the judge's full reasoning would add seconds to every clause.
+    params = params or get_params()  # read once, so a change mid-scan cannot mix two sets
     stats = ScanStats()
     done_pairs = set(
         db.scalars(
@@ -128,9 +141,22 @@ def run_scan(
         scan.settings_snapshot = {"progress": {"clause": stats.clauses, "of": len(chunks)}}
         db.commit()
         text = embedding_input(chunk.context_header, chunk.text, chunk.summary)
-        hits = hybrid_search(db, scan.workspace_id, text, chunk.embedding, version.id)
+        extra = []
+        if embedder is not None and params.scan_rewrites:
+            extra, spent = extra_queries(rewriter or chat, embedder, text, params.scan_rewrites)
+            stats.tokens += spent
+            stats.rewrites += len(extra)
+        hits = hybrid_search(
+            db,
+            scan.workspace_id,
+            text,
+            chunk.embedding,
+            version.id,
+            params=params,
+            extra_queries=extra,
+        )
         todo = []
-        for hit in funnel.apply_funnel(text, hits, reranker):
+        for hit in funnel.apply_funnel(text, hits, reranker, **params.funnel()):
             if not hit["kept"]:
                 continue
             stats.candidates += 1

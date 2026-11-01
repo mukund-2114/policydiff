@@ -17,15 +17,24 @@ The rules, in the order they run:
      area is dropped so it is not counted twice.
   6. A picture larger than a logo becomes a figure chunk. Its text is a placeholder until the
      enrich stage looks at the image and writes what it shows.
-  7. A chunk longer than the limit is split at sentence ends, repeating a little text (overlap)
-     at the start of each next piece so no sentence loses its context.
+  7. A chunk longer than the limit is split by the chosen strategy (D57). `structure` cuts at
+     sentence ends, repeating a little text (overlap) at the start of each next piece so no
+     sentence loses its context. `semantic` cuts where the meaning shifts, found by comparing the
+     embeddings of neighbouring sentences. Either way only clauses over the limit are split;
+     every other clause stays whole, because a finding needs one clause to quote.
 """
 
+import logging
 import re
+import statistics
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from app.pipeline.parse import simplify
+from app.retrieval.rank import cosine
+
+log = logging.getLogger(__name__)
 
 CLAUSE_START = re.compile(r"^(\d+(?:\.\d+)+)\.?\s")  # "1.1 ", "4.2.1. " but not "1. Purpose"
 SUBHEAD_LEVEL = 100  # numbered sub-headings always rank below headings found by font size
@@ -99,6 +108,61 @@ def split_long(text: str, max_tokens: int, overlap_tokens: int) -> list[str]:
     return pieces
 
 
+MIN_PIECE_SHARE = 4  # a semantic piece is at least 1/4 of the limit, so a cut never leaves a stub
+
+
+def split_semantic(text: str, max_tokens: int, embed: Callable[[list[str]], list[list[float]]]):
+    """Cut a long clause where the meaning shifts, not at a fixed size.
+
+    Each sentence is embedded. The cosine between neighbouring sentences says how closely they
+    belong together; a cut goes where it dips well below the clause's own average (one standard
+    deviation), once the piece so far is big enough to stand alone. A piece is also cut when the
+    next sentence would push it past the limit. No overlap is added: a cut at a change of topic
+    does not leave a sentence without its context.
+    """
+    if tokens(text) <= max_tokens:
+        return [text]
+    sentences = [s for s in SENTENCE_END.split(text) if s.strip()]
+    if len(sentences) < 3:
+        return split_long(text, max_tokens, 0)
+    vectors = embed(sentences)
+    sims = [cosine(vectors[i - 1], vectors[i]) for i in range(1, len(sentences))]
+    cut_below = statistics.mean(sims) - statistics.pstdev(sims)
+    min_tokens = max_tokens // MIN_PIECE_SHARE
+    pieces, current = [], [sentences[0]]
+    for i in range(1, len(sentences)):
+        so_far = " ".join(current)
+        too_big = tokens(so_far + " " + sentences[i]) > max_tokens
+        topic_shift = sims[i - 1] < cut_below and tokens(so_far) >= min_tokens
+        if too_big or topic_shift:
+            pieces.append(so_far)
+            current = []
+        current.append(sentences[i])
+    pieces.append(" ".join(current))
+    # One sentence longer than the limit still has to be cut by length.
+    return [q for piece in pieces for q in split_long(piece, max_tokens, 0)]
+
+
+def _split_structure(text, max_tokens, overlap_tokens, embed):
+    return split_long(text, max_tokens, overlap_tokens)
+
+
+def _split_semantic(text, max_tokens, overlap_tokens, embed):
+    # Without a way to embed, fall back to the fixed split so a missing key cannot stop ingestion.
+    if embed is None:
+        return split_long(text, max_tokens, overlap_tokens)
+    try:
+        return split_semantic(text, max_tokens, embed)
+    except Exception as e:  # noqa: BLE001 - a provider problem must not stop a document
+        log.warning("semantic split failed, using the fixed split: %s", e)
+        return split_long(text, max_tokens, overlap_tokens)
+
+
+# Strategy name -> how a clause that is over the limit is split. Add a strategy here and in
+# services/params.py (the list of choices) and nothing else changes.
+SPLITTERS = {"structure": _split_structure, "semantic": _split_semantic}
+
+
 def _margin_noise(pages: list[dict], simple: list[dict]) -> set[tuple[int, int]]:
     """(page index, block index) of headers, footers and page numbers."""
     zones, seen = {}, Counter()
@@ -114,9 +178,19 @@ def _margin_noise(pages: list[dict], simple: list[dict]) -> set[tuple[int, int]]
 
 
 def chunk_pages(
-    raw: dict, max_tokens: int = 400, overlap_tokens: int = 50, figures: bool = True
+    raw: dict,
+    max_tokens: int = 400,
+    overlap_tokens: int = 50,
+    figures: bool = True,
+    strategy: str = "structure",
+    embed: Callable[[list[str]], list[list[float]]] | None = None,
 ) -> tuple[list, dict]:
-    """Returns (chunks, stats). stats is shown on the pipeline page."""
+    """Returns (chunks, stats). stats is shown on the pipeline page.
+
+    `strategy` picks how a clause over the limit is split (see SPLITTERS). `embed` turns sentences
+    into vectors for the semantic strategy and is not needed for the others.
+    """
+    splitter = SPLITTERS.get(strategy, _split_structure)
     simple = simplify(raw)
     noise = _margin_noise(raw["pages"], simple)
 
@@ -170,7 +244,7 @@ def chunk_pages(
     def flush():
         nonlocal cur
         if cur and cur.text.strip():
-            pieces = split_long(cur.text.strip(), max_tokens, overlap_tokens)
+            pieces = splitter(cur.text.strip(), max_tokens, overlap_tokens, embed)
             for piece in pieces:
                 chunks.append(
                     ChunkDraft(
@@ -247,6 +321,7 @@ def chunk_pages(
                 cur.boxes.append(box)
     flush()
 
+    stats["strategy"] = strategy if strategy in SPLITTERS else "structure"
     stats["chunks"] = len(chunks)
     stats["table_chunks"] = sum(c.kind == "table" for c in chunks)
     stats["figure_chunks"] = sum(c.kind == "figure" for c in chunks)

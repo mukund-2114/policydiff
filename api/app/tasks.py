@@ -32,7 +32,7 @@ from app.providers.registry import (
     get_reranker,
     get_vision,
 )
-from app.retrieval.funnel import MAX_RERANKED, MMR_KEEP, MMR_LAMBDA, RELATED_THRESHOLD
+from app.services.params import get_params
 from app.services.scan import finish, run_scan
 from app.services.versions import plan_supersede
 from app.storage import get_storage, parsed_key
@@ -72,17 +72,21 @@ def chunk_version(version_id: str) -> None:
     Running it again replaces the old chunks, so it is also how a version is re-chunked.
     """
     settings = get_settings()
+    params = get_params()
     with Session(get_engine()) as db:
         version = db.get(DocumentVersion, uuid.UUID(version_id))
         if version is None or not version.parsed_json_path:
             return
         with run_stage(db, version, "chunking", "chunking") as stage:
             raw = json.loads(get_storage().get(version.parsed_json_path))
+            embed = get_embedder().embed if params.chunk_strategy == "semantic" else None
             drafts, stats = chunk_pages(
                 raw,
-                settings.chunk_max_tokens,
-                settings.chunk_overlap_tokens,
+                params.chunk_max_tokens,
+                params.chunk_overlap_tokens,
                 figures=settings.summarize_media,
+                strategy=params.chunk_strategy,
+                embed=embed,
             )
             # Judgments and findings point at the old chunks, so they go with them. A new scan
             # judges the new chunks.
@@ -213,6 +217,7 @@ def embed_version(version_id: str) -> None:
         version = db.get(DocumentVersion, uuid.UUID(version_id))
         if version is None:
             return
+        prior = version.status  # a retired version stays retired when it is embedded again
         with run_stage(db, version, "embedding", "embedding") as stage:
             chunks = db.scalars(
                 select(Chunk).where(Chunk.version_id == version.id).order_by(Chunk.position)
@@ -238,17 +243,22 @@ def embed_version(version_id: str) -> None:
                 "dimensions": embedder.dims,
                 "cut_to_fit": sum(len(x) >= MAX_CHARS for x in inputs),
             }
-        if version.status != "failed":
-            version.status = "ready"
-            others = db.scalars(
-                select(DocumentVersion).where(
-                    DocumentVersion.document_id == version.document_id,
-                    DocumentVersion.id != version.id,
-                )
-            ).all()
-            for old, end in plan_supersede(version, list(others), date.today()):
-                old.status, old.effective_to = "superseded", end
+        if version.status == "failed":
+            return
+        if prior == "superseded":
+            version.status = "superseded"
             db.commit()
+            return
+        version.status = "ready"
+        others = db.scalars(
+            select(DocumentVersion).where(
+                DocumentVersion.document_id == version.document_id,
+                DocumentVersion.id != version.id,
+            )
+        ).all()
+        for old, end in plan_supersede(version, list(others), date.today()):
+            old.status, old.effective_to = "superseded", end
+        db.commit()
 
 
 @queue.task(name="scan_version")
@@ -262,17 +272,24 @@ def scan_version(scan_id: str) -> None:
         scan.status, scan.started_at = "running", datetime.now(UTC)
         db.commit()
         cfg = effective_config()
+        params = get_params()
         snapshot = {  # what this scan ran with, so a finding can be traced to it
             "chat": f"{cfg.chat.provider}/{cfg.chat.model}",
             "rerank": f"{cfg.rerank.provider}/{cfg.rerank.model or 'default'}",
-            "threshold": RELATED_THRESHOLD,
-            "max_reranked": MAX_RERANKED,
-            "mmr_lambda": MMR_LAMBDA,
-            "mmr_keep": MMR_KEEP,
+            **asdict(params),  # every search and ranking number this scan ran with
             "prompt_version": PROMPT_VERSION,
         }
         try:
-            stats = run_scan(db, scan, version, get_chat(), get_reranker())
+            stats = run_scan(
+                db,
+                scan,
+                version,
+                get_chat(),
+                get_reranker(),
+                params,
+                get_embedder(),
+                get_chat(fast=True),
+            )
         except Exception as exc:  # noqa: BLE001
             db.rollback()
             log.exception("scan %s failed", scan_id)
