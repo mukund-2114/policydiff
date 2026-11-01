@@ -12,6 +12,7 @@ type Message = {
   role: "user" | "assistant";
   text: string;
   passages?: AskPassage[];
+  rewrites?: string[]; // other wordings searched with the question (multi-query)
   cited?: number[];
   findings?: AskFinding[];
   seconds?: number;
@@ -133,6 +134,9 @@ function Turn({ m }: { m: Message }) {
       </p>
       {m.error && <p className="text-danger">{m.error}</p>}
       {!m.streaming && <Sources m={m} />}
+      {!m.streaming && (m.rewrites?.length ?? 0) > 0 && (
+        <p className="text-muted">Also searched as: {m.rewrites!.join("; ")}</p>
+      )}
       {!m.streaming && <Findings items={m.findings ?? []} />}
       {!m.streaming && m.seconds !== undefined && <p className="text-xs text-muted">{m.seconds} s</p>}
     </div>
@@ -167,7 +171,7 @@ export function Ask() {
     try {
       for await (const event of askStream({ question, history, as_of: asOf || null })) {
         const e: AskEvent = event;
-        if (e.type === "passages") patch((m) => ({ ...m, passages: e.passages }));
+        if (e.type === "passages") patch((m) => ({ ...m, passages: e.passages, rewrites: e.rewrites }));
         else if (e.type === "token") patch((m) => ({ ...m, text: m.text + e.text }));
         else if (e.type === "done")
           patch((m) => ({ ...m, streaming: false, cited: e.cited, findings: e.findings, seconds: e.seconds }));

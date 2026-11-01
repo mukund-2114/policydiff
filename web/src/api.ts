@@ -139,14 +139,37 @@ export type ModelPick = {
   model: string;
   base_url?: string | null;
 };
+export type EmbedPick = { provider: "openai" | "openai_compatible" | "ollama"; model: string; base_url?: string | null };
 export type RerankPick = { provider: "local" | "llm" | "cohere"; model: string | null };
+export type PipelineParam = {
+  key: string;
+  label: string;
+  group: string;
+  low: number;
+  high: number;
+  step: number;
+  default: number | string;
+  value: number | string;
+  options: string[] | null; // set for a choice from a list instead of a number
+  unlock: string | null; // what to do before a change takes effect, for example cut documents again
+  more: string; // what happens when it goes up
+  less: string; // what happens when it goes down
+  cost: string | null; // set when changing it changes the cost
+  cost_up: boolean; // true: a higher value costs more
+};
 export type SettingsData = {
   chat: ModelPick;
   vision: ModelPick;
   rerank: RerankPick;
-  embed: { provider: string; model: string; dims: number };
+  pipeline: PipelineParam[];
+  embed: { provider: string; model: string; dims: number; base_url: string | null };
+  embed_stale: number; // chunks still embedded with another model than the one chosen
   keys: Record<string, { set: boolean; source: "settings" | "env" | null }>;
   allow_cloud: boolean;
+};
+export type SettingsChoices = Partial<Pick<SettingsData, "chat" | "vision" | "rerank">> & {
+  embed?: EmbedPick;
+  pipeline?: Record<string, number | string>;
 };
 export type PreviewResult = {
   clauses: number;
@@ -192,7 +215,7 @@ export type AskFinding = {
 // What the chat endpoint sends, one event at a time: the passages found, then pieces of the answer,
 // then a closing summary (or an error).
 export type AskEvent =
-  | { type: "passages"; passages: AskPassage[] }
+  | { type: "passages"; passages: AskPassage[]; rewrites?: string[] }
   | { type: "token"; text: string }
   | { type: "done"; cited: number[]; findings: AskFinding[]; tokens: number; seconds: number }
   | { type: "error"; message: string };
@@ -244,14 +267,20 @@ export const api = {
   audit: (action: string, limit: number, offset: number) =>
     request<AuditEvent[]>(`/audit?limit=${limit}&offset=${offset}${action ? `&action=${encodeURIComponent(action)}` : ""}`),
   settings: () => request<SettingsData>("/settings"),
-  saveSettings: (body: Partial<Pick<SettingsData, "chat" | "vision" | "rerank">> & { keys?: Record<string, string | null> }) =>
+  saveSettings: (body: SettingsChoices & { keys?: Record<string, string | null> }) =>
     request<SettingsData>("/settings", { method: "PUT", body: JSON.stringify(body) }),
+  reindex: () => request<SettingsData>("/settings/embed/reindex", { method: "POST" }),
+  models: (provider: string, job: string, baseUrl?: string | null) =>
+    request<{ models: string[]; message: string | null }>(
+      `/settings/models?provider=${provider}&job=${job}${baseUrl ? `&base_url=${encodeURIComponent(baseUrl)}` : ""}`,
+    ),
+  resetPipeline: () => request<SettingsData>("/settings/pipeline/reset", { method: "POST" }),
   testKey: (provider: string, key?: string) =>
     request<{ ok: boolean; message: string }>("/settings/test-key", {
       method: "POST",
       body: JSON.stringify({ provider, key: key ?? null }),
     }),
-  previewSettings: (body: Partial<Pick<SettingsData, "chat" | "vision" | "rerank">>) =>
+  previewSettings: (body: SettingsChoices) =>
     request<PreviewResult>("/settings/preview", { method: "POST", body: JSON.stringify(body) }),
   fileUrl: (id: string) => `/api/versions/${id}/file`,
 

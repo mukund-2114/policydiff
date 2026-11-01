@@ -1,12 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { api, type ModelPick, type RerankPick, type SettingsData } from "../api";
+import { api, type EmbedPick, type ModelPick, type RerankPick, type SettingsData } from "../api";
+import { ModelSelect } from "../components/ModelSelect";
+import { PipelineParams, type PipelineValues } from "../components/PipelineParams";
 import { button, field, panel, primary } from "../ui";
 
-// The Settings page, for admins. Three blocks: provider keys, which model each job uses, and a
-// Preview that tries the choices on 20 random chunks before you rely on them. A key is tested
-// before it is saved, is stored encrypted, and is never shown again, so the page only says whether
-// one is set and where it comes from.
+// The Settings page, for admins. Provider keys, which model each job uses, the search and ranking
+// numbers, and a Preview that tries the choices on 20 random chunks before you rely on them. A key
+// is tested before it is saved, is stored encrypted, and is never shown again, so the page only
+// says whether one is set and where it comes from. Reset puts the search numbers back to defaults.
 
 const PROVIDERS = [
   { id: "openai", label: "OpenAI", note: "Embeddings, the judge and Q&A use this by default." },
@@ -70,7 +72,7 @@ function KeyRow({ id, label, note, state }: { id: string; label: string; note: s
   );
 }
 
-function ModelRow({ label, note, value, onChange }: { label: string; note: string; value: ModelPick; onChange: (v: ModelPick) => void }) {
+function ModelRow({ label, note, job, value, onChange }: { label: string; note: string; job: "chat" | "vision"; value: ModelPick; onChange: (v: ModelPick) => void }) {
   return (
     <div className="grid items-center gap-2 border-t border-border py-3 first:border-t-0 md:grid-cols-[12rem_10rem_1fr]">
       <div>
@@ -90,12 +92,13 @@ function ModelRow({ label, note, value, onChange }: { label: string; note: strin
         <option value="ollama">Ollama (local)</option>
       </select>
       <div className="grid gap-2 md:grid-cols-2">
-        <input
-          className={field}
+        <ModelSelect
+          provider={value.provider}
+          job={job}
+          baseUrl={value.base_url}
           value={value.model}
-          aria-label={`${label} model`}
-          placeholder="Model name"
-          onChange={(e) => onChange({ ...value, model: e.target.value })}
+          label={label}
+          onChange={(model) => onChange({ ...value, model })}
         />
         {(value.provider === "openai_compatible" || value.provider === "ollama") && (
           <input
@@ -117,16 +120,28 @@ export function Settings() {
   const [chat, setChat] = useState<ModelPick | null>(null);
   const [vision, setVision] = useState<ModelPick | null>(null);
   const [rerank, setRerank] = useState<RerankPick | null>(null);
+  const [embed, setEmbed] = useState<EmbedPick | null>(null);
+  const [pipeline, setPipeline] = useState<PipelineValues | null>(null);
 
   useEffect(() => {
     if (settings.data) {
       setChat(settings.data.chat);
       setVision(settings.data.vision);
       setRerank(settings.data.rerank);
+      setEmbed({ provider: settings.data.embed.provider as EmbedPick["provider"], model: settings.data.embed.model, base_url: settings.data.embed.base_url });
+      setPipeline(Object.fromEntries(settings.data.pipeline.map((p) => [p.key, p.value])));
     }
   }, [settings.data]);
 
-  const choices = chat && vision && rerank ? { chat, vision, rerank } : null;
+  const choices = chat && vision && rerank && embed && pipeline ? { chat, vision, rerank, embed, pipeline } : null;
+  const reindex = useMutation({
+    mutationFn: api.reindex,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
+  });
+  const reset = useMutation({
+    mutationFn: api.resetPipeline,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
+  });
   const save = useMutation({
     mutationFn: () => api.saveSettings(choices!),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
@@ -136,7 +151,11 @@ export function Settings() {
   if (settings.isError) return <p className="p-6 text-danger">Only an admin can open Settings.</p>;
   if (!settings.data || !choices) return null;
   const s = settings.data;
-  const dirty = JSON.stringify(choices) !== JSON.stringify({ chat: s.chat, vision: s.vision, rerank: s.rerank });
+  const savedEmbed = { provider: s.embed.provider, model: s.embed.model, base_url: s.embed.base_url };
+  const embedChanged = embed!.provider !== savedEmbed.provider || embed!.model !== savedEmbed.model;
+  const saved = { chat: s.chat, vision: s.vision, rerank: s.rerank, embed: savedEmbed, pipeline: Object.fromEntries(s.pipeline.map((x) => [x.key, x.value])) };
+  const dirty = JSON.stringify(choices) !== JSON.stringify(saved);
+  const atDefaults = s.pipeline.every((x) => x.value === x.default);
   const p = preview.data;
 
   return (
@@ -157,8 +176,8 @@ export function Settings() {
       <section className={`${panel} px-4 py-2`}>
         <h2 className="pt-2 font-medium">Models</h2>
         <p className="text-muted">Changes apply to the next scan, question or upload. Nothing restarts.</p>
-        <ModelRow label="Judge and Q&A" note="Reads pairs and answers questions." value={chat!} onChange={setChat} />
-        <ModelRow label="Figures" note="Reads charts and drawings." value={vision!} onChange={setVision} />
+        <ModelRow label="Judge and Q&A" note="Reads pairs and answers questions." job="chat" value={chat!} onChange={setChat} />
+        <ModelRow label="Figures" note="Reads charts and drawings." job="vision" value={vision!} onChange={setVision} />
         <div className="grid items-center gap-2 border-t border-border py-3 md:grid-cols-[12rem_10rem_1fr]">
           <div>
             <p className="font-medium">Reranker</p>
@@ -182,24 +201,100 @@ export function Settings() {
                 : "Nothing leaves this machine."}
           </p>
         </div>
-        <div className="grid items-center gap-2 border-t border-border py-3 md:grid-cols-[12rem_1fr]">
+        <div className="grid items-start gap-2 border-t border-border py-3 md:grid-cols-[12rem_10rem_1fr]">
           <div>
             <p className="font-medium">Embeddings</p>
-            <p className="text-muted">Not editable here.</p>
+            <p className="text-muted">Turns each clause into numbers so search can match meaning.</p>
           </div>
-          <p className="font-mono">
-            {s.embed.provider} {s.embed.model}, {s.embed.dims} dimensions
-          </p>
+          <select
+            className={field}
+            value={embed!.provider}
+            aria-label="Embeddings provider"
+            onChange={(e) => setEmbed({ provider: e.target.value as EmbedPick["provider"], model: "", base_url: null })}
+          >
+            <option value="openai">OpenAI</option>
+            <option value="openai_compatible">OpenAI-compatible server</option>
+            <option value="ollama">Ollama (local)</option>
+          </select>
+          <div className="space-y-2">
+            <ModelSelect
+              provider={embed!.provider}
+              job="embed"
+              baseUrl={embed!.base_url}
+              value={embed!.model}
+              label="Embeddings"
+              onChange={(model) => setEmbed({ ...embed!, model })}
+            />
+            {(embed!.provider === "openai_compatible" || embed!.provider === "ollama") && (
+              <input
+                className={field}
+                value={embed!.base_url ?? ""}
+                aria-label="Embeddings server address"
+                placeholder="Server address, for example http://host:8000/v1"
+                onChange={(e) => setEmbed({ ...embed!, base_url: e.target.value || null })}
+              />
+            )}
+            <p className="text-muted">
+              Vectors are {s.embed.dims} numbers long, fixed by the database. text-embedding-3-small is the default and is
+              cheap. text-embedding-3-large reads wording more finely and costs more per chunk; it is asked for {s.embed.dims}{" "}
+              numbers so nothing in the database changes. A hosted model needs no download. A model on Ollama must be pulled
+              first, and it must give {s.embed.dims} numbers or it is refused.
+            </p>
+            {embedChanged && (
+              <p className="text-warn">
+                Saving a new embedding model means every chunk is embedded again, which sends all your policy text to the
+                provider and costs money. Vectors from two models cannot be compared, so search is unreliable until it
+                finishes.
+              </p>
+            )}
+          </div>
         </div>
-        <p className="border-t border-border py-3 text-muted">
-          Changing the embedding model means embedding every chunk again, so it stays in models.yaml. Edit it there, then
-          press Embed again on each document.
-        </p>
+        {s.embed_stale > 0 && !embedChanged && (
+          <div className="flex flex-wrap items-center gap-3 border-t border-border py-3">
+            <p className="text-warn">
+              {s.embed_stale.toLocaleString()} chunks were embedded with another model. Search mixes the two until they are
+              embedded again.
+            </p>
+            <button className={button} disabled={reindex.isPending} onClick={() => reindex.mutate()}>
+              {reindex.isPending ? "Queuing" : "Embed all documents again"}
+            </button>
+            {reindex.isError && <span className="text-danger">{(reindex.error as Error).message}</span>}
+          </div>
+        )}
         {!s.allow_cloud && (
           <p className="pb-3 text-warn">Cloud providers are switched off by egress.allow_cloud in models.yaml.</p>
         )}
+        <h2 className="border-t border-border pt-3 font-medium">Search and ranking</h2>
+        <p className="text-muted">
+          These numbers decide which clauses are compared with each other. Changes apply to the next scan or question.
+          If a stored value is ever invalid, the default is used instead.
+        </p>
+        <PipelineParams
+          params={s.pipeline}
+          values={pipeline!}
+          onChange={(key, value) => setPipeline({ ...pipeline!, [key]: value })}
+        />
+        <div className="flex flex-wrap items-center gap-2 border-t border-border py-3">
+          <button
+            className={button}
+            disabled={atDefaults || reset.isPending}
+            onClick={() => {
+              if (window.confirm("Put every search and ranking number back to its default?")) reset.mutate();
+            }}
+          >
+            Reset to defaults
+          </button>
+          {reset.isError && <span className="text-danger">{(reset.error as Error).message}</span>}
+          {reset.isSuccess && atDefaults && <span className="text-ok">Defaults restored.</span>}
+        </div>
         <div className="flex flex-wrap gap-2 pb-3">
-          <button className={primary} disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
+          <button
+            className={primary}
+            disabled={!dirty || save.isPending}
+            onClick={() => {
+              if (!embedChanged || window.confirm("Embed every chunk again with the new model? This costs money and takes a while.")) save.mutate();
+            }}
+          >
             Save choices
           </button>
           <button className={button} disabled={preview.isPending} onClick={() => preview.mutate()}>
