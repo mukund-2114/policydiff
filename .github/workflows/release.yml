@@ -26,7 +26,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           # GHCR names must be lowercase; the action lowercases the repository owner for us.
           images: ghcr.io/${{ github.repository_owner }}/policydiff-${{ matrix.image }}
