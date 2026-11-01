@@ -77,6 +77,8 @@ A scan reads about 5 candidate pairs per chunk. The Settings page **Preview** ru
 
 ## Put it on a server
 
+For a step-by-step guide with Cloudflare Tunnel, AWS and the GitHub release and deploy workflows, read [deploy/DEPLOY.md](deploy/DEPLOY.md). The short version:
+
 The containers listen on 127.0.0.1 only. To reach the app from other machines:
 
 1. Put a reverse proxy with HTTPS in front of port 8080 (Caddy, nginx, a cloud load balancer). The proxy must pass `/` to the web container; the web container already proxies `/api`.
@@ -118,7 +120,8 @@ api/      FastAPI app, database models, Alembic migrations, model adapters, pipe
 web/      React front end (served by Caddy, which also proxies /api)
 worker/   Reserved. The worker runs from the api image (see deploy/docker-compose.yml)
 evals/    The Northwind Air corpus, its PDFs and labels, and the accuracy scripts
-deploy/   docker-compose.yml
+deploy/   docker-compose.yml (build here), docker-compose.prod.yml (pull released images), DEPLOY.md
+.github/  CI, release and deploy workflows, Dependabot
 ```
 
 ## Develop

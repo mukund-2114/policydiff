@@ -1,0 +1,139 @@
+name: policydiff
+
+# The production version of docker-compose.yml. Differences, and why:
+#   - It pulls the images that release.yml published instead of building them on the server.
+#   - The api is not published on the host at all; only the web container is, on 127.0.0.1.
+#   - The demo-policies mount is gone (the Samples page is then empty).
+#   - COOKIE_SECURE defaults to true, because production is served over HTTPS.
+#   - Two optional ways to get HTTPS, pick one (see DEPLOY.md):
+#       profile "caddy":  a Caddy container gets a certificate for DOMAIN and serves ports 80 and 443.
+#       profile "tunnel": a Cloudflare Tunnel, which needs no open ports.
+#
+# Run it with:  docker compose -f docker-compose.prod.yml up -d
+# Set COMPOSE_PROFILES=caddy (and DOMAIN) or COMPOSE_PROFILES=tunnel (and TUNNEL_TOKEN) in .env.
+# IMAGE_TAG picks the version (default latest); IMAGE_OWNER is the GitHub account that owns them.
+
+x-api-env: &api-env
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+  SECRET_KEY: ${SECRET_KEY}
+  ADMIN_EMAIL: ${ADMIN_EMAIL}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  COHERE_API_KEY: ${COHERE_API_KEY:-}
+  AWS_REGION: ${AWS_REGION:-}
+  COOKIE_SECURE: ${COOKIE_SECURE:-true}
+  MODEL_CACHE_DIR: /data/models
+  HF_HOME: /tmp/hf
+  EMBED_DIMS: ${EMBED_DIMS:-1536}
+  MODELS_CONFIG: /config/models.yaml
+  STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+  S3_BUCKET: ${S3_BUCKET:-policydiff}
+  S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-}
+  S3_REGION: ${S3_REGION:-}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+
+services:
+  db:
+    restart: unless-stopped
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    restart: unless-stopped
+    image: ghcr.io/${IMAGE_OWNER:-mukund-2114}/policydiff-api:${IMAGE_TAG:-latest}
+    pull_policy: always
+    environment: *api-env
+    volumes:
+      # models.yaml is a plain config file kept next to this one on the server.
+      - ./models.yaml:/config/models.yaml:ro
+      - files:/data/files
+      - models:/data/models
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  worker:
+    restart: unless-stopped
+    image: ghcr.io/${IMAGE_OWNER:-mukund-2114}/policydiff-api:${IMAGE_TAG:-latest}
+    pull_policy: always
+    command: ["python", "-m", "procrastinate", "--app=app.jobs.queue", "worker"]
+    environment: *api-env
+    volumes:
+      - ./models.yaml:/config/models.yaml:ro
+      - files:/data/files
+      - models:/data/models
+    depends_on:
+      api:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  web:
+    restart: unless-stopped
+    image: ghcr.io/${IMAGE_OWNER:-mukund-2114}/policydiff-web:${IMAGE_TAG:-latest}
+    pull_policy: always
+    depends_on:
+      - api
+    # Reachable from the server itself (for a reverse proxy) and from cloudflared by name.
+    ports:
+      - "127.0.0.1:8080:8080"
+    read_only: true
+    tmpfs:
+      - /data:mode=1777
+      - /config:mode=1777
+
+  # HTTPS with a certificate that Caddy fetches and renews by itself. Point an A record for DOMAIN
+  # at this server first, and open ports 80 and 443. It passes everything to the web container.
+  caddy:
+    profiles: ["caddy"]
+    restart: unless-stopped
+    image: caddy:2-alpine
+    command: caddy reverse-proxy --from ${DOMAIN:-localhost} --to web:8080
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
+  # Cloudflare Tunnel. It makes an outbound connection to Cloudflare, so the server needs no open
+  # ports and no certificate. Off unless you start the stack with --profile tunnel.
+  cloudflared:
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on:
+      - web
+
+volumes:
+  pgdata:
+  files:
+  models:
+  caddy_data:
+  caddy_config:

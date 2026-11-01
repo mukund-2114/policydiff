@@ -1,0 +1,58 @@
+name: deploy
+
+# Manual only: press "Run workflow" in the Actions tab and give a version such as 0.1.0.
+# It logs in to your server over SSH, pulls that version of the images and restarts the stack.
+# Nothing here runs by itself, so a push never changes production.
+#
+# Needs these in Settings > Secrets and variables > Actions (see deploy/DEPLOY.md):
+#   DEPLOY_HOST     the server's address
+#   DEPLOY_USER     the SSH user (it must be allowed to run docker)
+#   DEPLOY_SSH_KEY  a private key whose public half is in that user's authorized_keys
+#   DEPLOY_PATH     the folder on the server that holds docker-compose.prod.yml and .env
+# Turn on "Required reviewers" for the production environment to add an approval step.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Image version to run, for example 0.1.0 (a tag already released)"
+        required: true
+        default: latest
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Set up SSH
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
+      - name: Pull and restart
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          ssh -i ~/.ssh/id_deploy "$DEPLOY_USER@$HOST" \
+            "cd '$DEPLOY_PATH' && IMAGE_TAG='$VERSION' docker compose -f docker-compose.prod.yml pull && IMAGE_TAG='$VERSION' docker compose -f docker-compose.prod.yml up -d --remove-orphans && docker image prune -f"
+      - name: Wait for the api to report healthy
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          ssh -i ~/.ssh/id_deploy "$DEPLOY_USER@$HOST" \
+            "cd '$DEPLOY_PATH' && for i in \$(seq 1 30); do docker compose -f docker-compose.prod.yml ps api | grep -q healthy && exit 0; sleep 5; done; docker compose -f docker-compose.prod.yml logs --tail 50 api; exit 1"
